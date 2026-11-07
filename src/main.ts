@@ -9,7 +9,9 @@
  */
 
 import type { Format } from './format.ts';
-import { atFinesse, fittingHeight, FORMATS } from './format.ts';
+import { atFinesse, fittingHeight } from './format.ts';
+import type { Style } from './style.ts';
+import { STYLES } from './style.ts';
 import { toLab } from './game/lab.ts';
 import type { Sheet } from './brush.ts';
 import { stamp, stroke } from './brush.ts';
@@ -46,10 +48,12 @@ const state = {
   /** What the brush lays down: 1 paints subject, -1 paints background. */
   brush: 1 as 1 | -1,
   radius: 24,
+  /** Le style visé : une boîte, un nombre de couleurs, la palette d'une machine (style.ts). */
+  style: STYLES[0] as Style,
   /** The box and the rule for putting the subject in it, before `finesse` (format.ts). */
-  format: PLACEMENT_DEFAULTS.format,
+  format: STYLES[0]?.format ?? PLACEMENT_DEFAULTS.format,
   /** The subject's height in the format's own pixels, before `finesse`. */
-  height: PLACEMENT_DEFAULTS.height,
+  height: STYLES[0]?.format.height0 ?? PLACEMENT_DEFAULTS.height,
   /**
    * How many pixels the square really holds, as a multiple of the frame's own size. The grain of
    * the result is nothing but this: at ×4 the same framing is drawn four times as finely, at ×½
@@ -65,7 +69,8 @@ const state = {
   sharpen: PIXELIZE_DEFAULTS.sharpen,
   saturation: PIXELIZE_DEFAULTS.saturation,
   outline: PIXELIZE_DEFAULTS.outline,
-  colors: PIXELIZE_DEFAULTS.colors,
+  colors: STYLES[0]?.colors ?? PIXELIZE_DEFAULTS.colors,
+  dither: STYLES[0]?.dither ?? PIXELIZE_DEFAULTS.dither,
   orphans: PIXELIZE_DEFAULTS.orphans,
   zoom: 1,
   guides: true,
@@ -81,6 +86,12 @@ interface Work {
   readonly canvas: Uint8Array;
   /** Room for the model's mask, kept apart because `refine` writes over what it is given. */
   readonly cleaned: Uint8Array;
+  /**
+   * Un échantillon des couleurs du sujet, prises sur la source avant toute réduction : c'est là
+   * qu'on apprend la palette, pour qu'elle représente ce qu'on a donné à l'outil et non ce qui
+   * reste après coup.
+   */
+  sample?: Uint8ClampedArray;
 }
 
 let work: Work | undefined;
@@ -117,6 +128,7 @@ const sourceInfo = must('source-info');
 const cellInfo = must('cell-info');
 const cellLabel = must('cell-label');
 const status = must('status');
+const about = must('about');
 
 // Controls -------------------------------------------------------------------------------------
 
@@ -169,15 +181,28 @@ function chooseSource(value: number): void {
   state.source = value === 1 ? 'model' : 'key';
 }
 
-/** Picking a format takes its own suggested height: a 16 × 16 object is not a fighter. */
-function chooseFormat(index: number): void {
-  const picked = FORMATS[index];
+/**
+ * Choisir un style pose tout : la boîte, le nombre de couleurs, la palette de la machine. C'est le
+ * seul choix nécessaire pour obtenir quelque chose — le reste est là pour affiner, pas pour
+ * démarrer.
+ */
+function chooseStyle(index: number): void {
+  const picked = STYLES[index];
   if (!picked) return;
-  state.format = picked;
-  state.height = picked.height0;
+  state.style = picked;
+  state.format = picked.format;
+  state.height = picked.format.height0;
+  state.colors = picked.colors;
+  state.dither = picked.dither;
   state.nudgeX = 0;
   state.nudgeY = 0;
+  about.textContent = picked.about;
+  // Un objet se cadre en le faisant tenir : c'est le geste normal, autant le faire d'office.
+  if (picked.format.pin.kind === 'box') fitSoon = true;
 }
+
+/** Remplir le format demande de connaître le sujet, qui n'est mesuré qu'après la passe suivante. */
+let fitSoon = false;
 
 /** The height that makes the subject fill its format, margins kept. */
 function fill(): void {
@@ -190,6 +215,7 @@ function fill(): void {
   schedule();
 }
 
+about.textContent = state.style.about;
 must('controls').append(
   ui.group('Silhouette', [
     ui.range(
@@ -255,10 +281,10 @@ must('controls').append(
   ]),
   ui.group('Pose', [
     ui.choice(
-      'Format',
-      () => FORMATS.indexOf(state.format),
-      chooseFormat,
-      FORMATS.map((format, index) => ({ value: index, label: format.name })),
+      'Style',
+      () => STYLES.indexOf(state.style),
+      chooseStyle,
+      STYLES.map((style, index) => ({ value: index, label: style.name })),
     ),
     ui.range(
       'Hauteur du sujet',
@@ -428,6 +454,7 @@ function run(): void {
     }
   }
   mask = painted(automatic.mask, loaded.paint, loaded.canvas);
+  loaded.sample = sampleOf(loaded.image, mask);
   const format = atFinesse(state.format, state.finesse);
   const placed = placeOnCell(
     loaded.image,
@@ -451,7 +478,16 @@ function run(): void {
     colors: state.colors,
     orphans: state.orphans,
     method: state.method,
+    dither: state.dither,
+    // Les couleurs de la source, pour y choisir la palette plutôt que sur l'image déjà réduite.
+    from: loaded.sample,
+    ...(state.style.master ? { master: state.style.master } : {}),
   });
+  if (fitSoon) {
+    fitSoon = false;
+    fill();
+    return;
+  }
   save.disabled = false;
   ui.refresh();
   sourceView.hidden = false;
@@ -480,6 +516,30 @@ function think(loaded: Work): void {
       ui.refresh();
       if (state.source === 'model') run();
     });
+}
+
+/** Au plus ce nombre de couleurs du sujet : de quoi apprendre une palette sans y passer la nuit. */
+const SAMPLE = 24_000;
+
+/** Les couleurs du sujet, prises sur la source à pas régulier. */
+function sampleOf(image: Bitmap, found: Mask): Uint8ClampedArray {
+  const total = found.pixels;
+  if (total === 0) return new Uint8ClampedArray(0);
+  const stride = Math.max(1, Math.floor(total / SAMPLE));
+  const taken = new Uint8ClampedArray(Math.ceil(total / stride) * 4);
+  let seen = 0;
+  let kept = 0;
+  for (let pixel = 0; pixel < found.on.length; pixel++) {
+    if ((found.on[pixel] ?? 0) === 0) continue;
+    if (seen++ % stride !== 0) continue;
+    if (kept * 4 + 3 >= taken.length) break;
+    taken[kept * 4] = image.data[pixel * 4] ?? 0;
+    taken[kept * 4 + 1] = image.data[pixel * 4 + 1] ?? 0;
+    taken[kept * 4 + 2] = image.data[pixel * 4 + 2] ?? 0;
+    taken[kept * 4 + 3] = 255;
+    kept++;
+  }
+  return taken.subarray(0, kept * 4);
 }
 
 // What the page says -----------------------------------------------------------------------------

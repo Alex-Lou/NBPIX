@@ -117,6 +117,9 @@ export function placeOnCell(
 
   const cell = bitmap(format.width, format.height);
   const on = new Uint8Array(format.width * format.height);
+  // La part de chaque pixel que le sujet occupe vraiment, gardée telle quelle : c'est elle qui
+  // décide ensuite ce qui est dessiné, et un seuil posé pixel par pixel efface les objets fins.
+  const coverage = new Float32Array(format.width * format.height);
   // Room for every source pixel one output pixel can cover, reused from pixel to pixel: allocating
   // per pixel would churn millions of small arrays.
   const room = Math.max(
@@ -164,8 +167,8 @@ export function placeOnCell(
           kept++;
         }
       }
-      // Half the pixel covered by the subject or more: it belongs to the sprite, fully opaque.
-      if (cover <= 0 || covered * 2 < cover || kept === 0) continue;
+      if (cover <= 0 || kept === 0) continue;
+      coverage[y * format.width + x] = covered / cover;
       if (placement.edge > 0 && kept > 1)
         sharpenWeights(placement.edge, kept, weights, pulled, lights, greenReds, blueYellows);
       let red = 0;
@@ -185,8 +188,11 @@ export function placeOnCell(
       cell.data[at + 1] = byteOf(green / total);
       cell.data[at + 2] = byteOf(blue / total);
       cell.data[at + 3] = 255;
-      on[y * format.width + x] = 1;
     }
+  }
+  drawn(coverage, format.width, format.height, on);
+  for (let pixel = 0; pixel < on.length; pixel++) {
+    if ((on[pixel] ?? 0) === 0) cell.data[pixel * 4 + 3] = 0;
   }
   return {
     cell,
@@ -194,6 +200,47 @@ export function placeOnCell(
     scale,
     overflow: overflowOf(silhouette.box, { sourceX, sourceY, format }),
   };
+}
+
+/**
+ * Sous ce seuil, un pixel n'est dessiné que s'il est la crête d'une forme fine. Mesuré sur une
+ * épée réduite à 16 × 16 : sa lame n'y occupe que 0,66 pixel de large, donc à cheval sur deux
+ * colonnes elle n'en couvre que 0,33 de chacune.
+ */
+const RIDGE = 0.12;
+
+/**
+ * Ce qui est dessiné, à partir de ce que le sujet couvre.
+ *
+ * La règle évidente — la moitié du pixel ou plus — est juste tant que l'objet est épais devant le
+ * pixel. Elle **efface** tout ce qui est plus fin : une lame, un câble, une antenne, une patte.
+ * Réduite assez, une épée disparaît entièrement, ce qui n'est pas « moins de détail » mais « plus
+ * d'objet ».
+ *
+ * Un pixel est donc aussi dessiné quand il est une **crête** : plus couvert que ses deux voisins
+ * de part et d'autre, dans l'une ou l'autre direction, et au-dessus d'un plancher. Une forme fine
+ * laisse exactement ça — une arête de couverture — et en garde une ligne d'un pixel au lieu de
+ * rien. C'est la différence entre réduire et reconstruire.
+ */
+function drawn(coverage: Float32Array, width: number, height: number, on: Uint8Array): void {
+  const at = (x: number, y: number) =>
+    x < 0 || y < 0 || x >= width || y >= height ? 0 : (coverage[y * width + x] ?? 0);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const own = at(x, y);
+      if (own >= 0.5) {
+        on[y * width + x] = 1;
+        continue;
+      }
+      if (own < RIDGE) continue;
+      // Une crête : au moins aussi couvert que ses voisins d'un côté, et plus que l'un des deux.
+      const across =
+        own >= at(x - 1, y) && own >= at(x + 1, y) && (own > at(x - 1, y) || own > at(x + 1, y));
+      const along =
+        own >= at(x, y - 1) && own >= at(x, y + 1) && (own > at(x, y - 1) || own > at(x, y + 1));
+      if (across || along) on[y * width + x] = 1;
+    }
+  }
 }
 
 /** The point of the subject a format pins, and the point of the box it goes on. */
