@@ -5,7 +5,7 @@
  * the Aseprite extension mirrors and that refuses a drawing before anything is generated. Rather
  * than write a lookalike here, the page runs **that** engine on its own output. So what the tool
  * says is what the pipeline will say, now and after the rules change; nothing to keep in step by
- * hand (loi de Hyrum, CLAUDE.md).
+ * hand (loi de Hyrum).
  *
  * Only the geometric rules can apply: the output is truecolour, so everything about palette slots
  * is out of reach (docs/methode.md §1). What is left is worth having — the 4 px kept clear along
