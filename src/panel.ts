@@ -17,6 +17,7 @@ export interface PanelParts {
   readonly clear: HTMLButtonElement;
   readonly fit: HTMLButtonElement;
   readonly save: HTMLButtonElement;
+  readonly compute: HTMLButtonElement;
   readonly chooseStyle: (index: number) => void;
   readonly chooseSource: (value: number) => void;
 }
@@ -40,6 +41,7 @@ export function panelOn(ui: Controls, parts: PanelParts): readonly HTMLElement[]
     ),
     // La ligne qui dit ce que ce style impose commente le choix : elle le suit, elle ne le précède pas.
     parts.about,
+    parts.compute,
     parts.save,
     ui.fold('Réglages fins', [
       ui.group('Silhouette', [
@@ -220,6 +222,13 @@ export function panelOn(ui: Controls, parts: PanelParts): readonly HTMLElement[]
             max: 4,
             step: 1,
           },
+        ),
+        ui.range(
+          'Finesse de découpe',
+          () => state.detail,
+          (v) => (state.detail = v),
+          { min: 2, max: 6, step: 1 },
+          (value) => `${value}× la sortie`,
         ),
       ]),
       ui.group('Affichage', [

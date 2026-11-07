@@ -29,6 +29,9 @@ import { painted, refine, SILHOUETTE_DEFAULTS, silhouetteOf, soleOf } from './si
 import { canvasOf, drawCell, drawSource, fitZoom } from './view.ts';
 import { sentenceOf } from './words.ts';
 import { panelOn } from './panel.ts';
+import { snappedTo } from './abstract-cell.ts';
+import { runnerOn } from './abstract-runner.ts';
+import type { Job } from './abstract.worker.ts';
 import type { Work } from './page-state.ts';
 import { state, WORK_MAX } from './page-state.ts';
 
@@ -47,6 +50,18 @@ let made: Pixelized | undefined;
 let shownFormat: Format = PLACEMENT_DEFAULTS.format;
 /** The mask of the last pass, so « remplir » knows how big the subject is. */
 let mask: Mask | undefined;
+
+/**
+ * Tout ce dont l'abstraction a besoin, tel que la dernière passe l'a laissé, plus l'empreinte de
+ * ce qui l'a produit : c'est elle qui dit si un résultat déjà calculé vaut encore.
+ */
+let ready: { readonly key: string; readonly make: () => Job } | undefined;
+
+/** Le résultat de l'abstraction, et l'empreinte pour laquelle il vaut. */
+let abstracted: { readonly key: string; readonly cell: Bitmap } | undefined;
+
+/** Combien de traits de pinceau ont été posés : un trait change le sujet, donc l'abstraction. */
+let strokes = 0;
 
 // The page -------------------------------------------------------------------------------------
 
@@ -121,6 +136,54 @@ const fitButton = ui.button('Remplir le format', fill);
 const save = ui.button('Enregistrer la case (PNG)', exportCell);
 save.disabled = true;
 
+// L'abstraction ---------------------------------------------------------------------------------
+
+/**
+ * L'aperçu rapide reste instantané ; l'abstraction, qui met de quelques dixièmes de seconde à une
+ * vingtaine de secondes, se demande. Un bouton plutôt qu'un calcul automatique : on règle d'abord
+ * la silhouette et le cadrage, on abstrait quand ils sont bons.
+ */
+const compute = ui.button('Calculer en pixel art', () => {
+  if (runner.busy()) {
+    runner.cancel();
+    restCompute('Calculer en pixel art');
+    return;
+  }
+  if (!ready) return;
+  started = Date.now();
+  showElapsed();
+  ticking = window.setInterval(showElapsed, 1000);
+  runner.start(ready.make());
+});
+compute.disabled = true;
+
+let ticking = 0;
+let started = 0;
+
+function showElapsed(): void {
+  compute.textContent = `Calcul… ${Math.round((Date.now() - started) / 1000)} s — arrêter`;
+}
+
+function restCompute(label: string): void {
+  window.clearInterval(ticking);
+  ticking = 0;
+  compute.textContent = label;
+}
+
+const runner = runnerOn({
+  done: (grid, colors, passes) => {
+    restCompute('Recalculer en pixel art');
+    if (!ready) return;
+    abstracted = { key: ready.key, cell: snappedTo(grid, state.style.master) };
+    paintCell();
+    note('fine', `✔ Pixel art : ${colors} couleur(s) choisies ensemble, ${passes} passes.`);
+  },
+  failed: (why) => {
+    restCompute('Calculer en pixel art');
+    note('warn', `✖ Le calcul n’a pas abouti : ${why}`);
+  },
+});
+
 /**
  * The model is offered only once its weights are there: without them the page keeps the colour
  * key and says what to run, rather than failing when the choice is made.
@@ -176,7 +239,7 @@ function fill(): void {
 
 about.textContent = state.style.about;
 must('controls').append(
-  ...panelOn(ui, { about, clear, fit: fitButton, save, chooseStyle, chooseSource }),
+  ...panelOn(ui, { about, clear, fit: fitButton, save, compute, chooseStyle, chooseSource }),
 );
 
 // The chain --------------------------------------------------------------------------------------
@@ -248,6 +311,59 @@ function run(): void {
     return;
   }
   save.disabled = false;
+  // L'empreinte de ce qui a produit la case : tant qu'elle ne change pas, un résultat déjà calculé
+  // reste valable. La fabrication du travail attend le clic, parce qu'elle repose la case en
+  // grand et que ça n'a pas à coûter à chaque mouvement de curseur.
+  const found = mask;
+  ready = {
+    key: JSON.stringify([
+      key,
+      strokes,
+      STYLES.indexOf(state.style),
+      state.height,
+      state.flip,
+      state.finesse,
+      state.nudgeX,
+      state.nudgeY,
+      state.edge,
+      state.colors,
+      state.saturation,
+      state.detail,
+    ]),
+    make: () => {
+      // La même pose, calculée `detail` fois plus finement. Le moteur la réduira à la taille
+      // réelle : l'échelle, l'ancre, les marges, le retournement et la règle de crête restent donc
+      // ceux de place.ts, au lieu d'une transformation que ce fichier recalculerait de travers.
+      const big = placeOnCell(
+        loaded.image,
+        found,
+        {
+          format: atFinesse(format, state.detail),
+          height: Math.round(state.height * state.finesse * state.detail),
+          flip: state.flip,
+          nudgeX: Math.round(state.nudgeX * state.finesse * state.detail),
+          nudgeY: Math.round(state.nudgeY * state.finesse * state.detail),
+          edge: state.edge,
+        },
+        loaded.lab,
+      );
+      return {
+        width: big.cell.width,
+        height: big.cell.height,
+        data: big.cell.data,
+        on: big.on,
+        box: { left: 0, top: 0, right: big.cell.width - 1, bottom: big.cell.height - 1 },
+        options: {
+          width: format.width,
+          height: format.height,
+          colors: state.colors,
+          saturation: state.saturation,
+          detail: state.detail,
+        },
+      };
+    },
+  };
+  compute.disabled = false;
   // Avant toute mesure : une figure cachée n'a pas de largeur.
   sourceView.hidden = false;
   cellView.hidden = false;
@@ -259,8 +375,24 @@ function run(): void {
   }
   ui.refresh();
   drawSource(sourceCanvas, loaded.image, mask, loaded.paint);
-  drawCell(cellCanvas, made.cell, { zoom: state.zoom, format, guides: state.guides });
+  paintCell();
   report(loaded.image, mask, placed, made);
+}
+
+/**
+ * La case qu'on montre et qu'on exporte : l'abstraction quand elle vaut encore pour ce que montre
+ * la page, l'aperçu rapide sinon. Un réglage changé périme l'abstraction sans l'effacer — elle
+ * revient si on revient au réglage d'avant.
+ */
+function shownCell(): Bitmap | undefined {
+  if (abstracted && ready && abstracted.key === ready.key) return abstracted.cell;
+  return made?.cell;
+}
+
+function paintCell(): void {
+  const cell = shownCell();
+  if (!cell) return;
+  drawCell(cellCanvas, cell, { zoom: state.zoom, format: shownFormat, guides: state.guides });
 }
 
 /** Ask the model what it sees, then come back and finish the pass. */
@@ -356,8 +488,9 @@ function report(image: Bitmap, found: Mask, placed: Placed, pixels: Pixelized): 
 }
 
 function exportCell(): void {
-  if (!made) return;
-  canvasOf(made.cell).toBlob((blob) => {
+  const cell = shownCell();
+  if (!cell) return;
+  canvasOf(cell).toBlob((blob) => {
     if (!blob) return;
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -395,6 +528,7 @@ sourceCanvas.addEventListener('pointerdown', (event) => {
   sourceCanvas.setPointerCapture(event.pointerId);
   drawing = pointOf(event);
   stamp(sheetOf(loaded), drawing, state.radius, state.brush);
+  strokes++;
   clear.disabled = false;
   schedule();
 });
@@ -404,6 +538,7 @@ sourceCanvas.addEventListener('pointermove', (event) => {
   if (!drawing || !loaded) return;
   const at = pointOf(event);
   stroke(sheetOf(loaded), drawing, at, state.radius, state.brush);
+  strokes++;
   drawing = at;
   schedule();
 });

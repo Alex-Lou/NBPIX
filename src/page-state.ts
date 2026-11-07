@@ -56,6 +56,12 @@ export const state = {
   colors: STYLES[0]?.colors ?? PIXELIZE_DEFAULTS.colors,
   dither: STYLES[0]?.dither ?? PIXELIZE_DEFAULTS.dither,
   orphans: PIXELIZE_DEFAULTS.orphans,
+  /**
+   * Pixels de source par pixel de sortie que l'abstraction regarde, sur un axe. Son coût est en
+   * `largeur × hauteur × detail²` : c'est le seul bouton qui achète du temps contre de la finesse
+   * de découpe. Mesuré sur une planche de 256 : ×2 ne gagne presque rien sur ×3.
+   */
+  detail: 4,
   zoom: 1,
   /**
    * La largeur de case pour laquelle le zoom courant a été choisi. Tant qu'elle ne change pas, le
