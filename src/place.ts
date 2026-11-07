@@ -17,7 +17,9 @@
  * wants anyway — nothing is interpolated (D23).
  */
 
-import { ANCHOR, CELL_SIZE, PORTRAIT_SIZE, STANDING_HEIGHT } from './game/contract.ts';
+import type { Format } from './format.ts';
+import { fighterFormat, PORTRAIT } from './format.ts';
+import { PORTRAIT_SIZE, STANDING_HEIGHT } from './game/contract.ts';
 import { toLab } from './game/lab.ts';
 import type { Bitmap, Box } from './pixels.ts';
 import { bitmap, byteOf, heightOf, labBufferOf, linearOf } from './pixels.ts';
@@ -28,15 +30,12 @@ import { crownOf, soleOf } from './silhouette.ts';
  * What the square is for. A fighter's cell stands the subject on the game's anchor; a portrait
  * frames its head and lets the shoulders run off the bottom, which is what a bust is.
  */
-export type Frame = 'fighter' | 'portrait';
-
 export { PORTRAIT_SIZE, STANDING_HEIGHT };
 
 export interface Placement {
-  readonly frame: Frame;
-  /** The square's side in art pixels: `CELL_SIZE`, twice it for HD, or `PORTRAIT_SIZE`. */
-  readonly cell: number;
-  /** The subject's height on the square, in its pixels. */
+  /** The box, and the rule for putting the subject in it (format.ts). */
+  readonly format: Format;
+  /** The subject's height in the format, in its pixels. */
   readonly height: number;
   /** The game's strips face right; a subject facing left is turned over. */
   readonly flip: boolean;
@@ -54,17 +53,8 @@ export interface Placement {
   readonly edge: number;
 }
 
-/**
- * Air left over the hair, as a share of the square. The game's own framing puts the head's middle
- * at 45 % of the square with the head filling about 58 % of it (tools/sprites/aseprite-template.ts
- * `portraitStart`), which leaves the crown near a sixth of the way down; a photographed head keeps
- * more hair than a drawn one, so a little less.
- */
-const PORTRAIT_AIR = 0.06;
-
 export const PLACEMENT_DEFAULTS: Placement = {
-  frame: 'fighter',
-  cell: CELL_SIZE * 2,
+  format: fighterFormat(2),
   height: STANDING_HEIGHT * 2,
   flip: false,
   nudgeX: 0,
@@ -74,9 +64,8 @@ export const PLACEMENT_DEFAULTS: Placement = {
 
 /** A bust fills its square and lets the shoulders go: the head is what the tile shows. */
 export const PORTRAIT_DEFAULTS: Placement = {
-  frame: 'portrait',
-  cell: PORTRAIT_SIZE,
-  height: PORTRAIT_SIZE,
+  format: PORTRAIT,
+  height: PORTRAIT.height0,
   flip: false,
   nudgeX: 0,
   nudgeY: 0,
@@ -97,7 +86,6 @@ export interface Placed {
   readonly on: Uint8Array;
   /** Source pixels per cell pixel: under 1 the source is being reduced. */
   readonly scale: number;
-  readonly anchor: { readonly x: number; readonly y: number };
   readonly overflow: Overflow;
 }
 
@@ -120,22 +108,15 @@ export function placeOnCell(
   const [source, silhouette] = placement.flip ? turnedOver(image, mask) : [image, mask];
   // A turned-over image is not the one the page measured, so its colours are measured again.
   const colors = !lab || placement.flip ? labBufferOf(source, toLab) : lab;
-  const side = placement.cell;
+  const { format } = placement;
   const scale = placement.height / heightOf(silhouette.box);
-  const unit = side / CELL_SIZE;
-  // Where the subject is pinned, and onto what. A fighter stands the last row of its feet on the
-  // row just under the anchor row, its feet centred on the anchor column; a bust hangs the top of
-  // its head under the air, centred on the square.
-  const held = placement.frame === 'fighter' ? soleOf(silhouette) : crownOf(silhouette);
-  const heldX = held.x + 0.5;
-  const heldY = placement.frame === 'fighter' ? silhouette.box.bottom + 1 : silhouette.box.top;
-  const pinX = placement.frame === 'fighter' ? (ANCHOR.x + 0.5) * unit : side / 2;
-  const pinY = placement.frame === 'fighter' ? (ANCHOR.y + 1) * unit : side * PORTRAIT_AIR;
-  const sourceX = (cellEdge: number) => (cellEdge - pinX - placement.nudgeX) / scale + heldX;
-  const sourceY = (cellEdge: number) => (cellEdge - pinY - placement.nudgeY) / scale + heldY;
+  // Where the subject is pinned, and onto what: the one thing a format decides (format.ts).
+  const { held, pin } = pinningOf(format, silhouette);
+  const sourceX = (edge: number) => (edge - pin.x - placement.nudgeX) / scale + held.x;
+  const sourceY = (edge: number) => (edge - pin.y - placement.nudgeY) / scale + held.y;
 
-  const cell = bitmap(side, side);
-  const on = new Uint8Array(side * side);
+  const cell = bitmap(format.width, format.height);
+  const on = new Uint8Array(format.width * format.height);
   // Room for every source pixel one output pixel can cover, reused from pixel to pixel: allocating
   // per pixel would churn millions of small arrays.
   const room = Math.max(
@@ -152,10 +133,10 @@ export function placeOnCell(
   const greenReds = new Float64Array(room);
   const blueYellows = new Float64Array(room);
 
-  for (let y = 0; y < side; y++) {
+  for (let y = 0; y < format.height; y++) {
     const top = sourceY(y);
     const bottom = sourceY(y + 1);
-    for (let x = 0; x < side; x++) {
+    for (let x = 0; x < format.width; x++) {
       const left = sourceX(x);
       const right = sourceX(x + 1);
       let cover = 0;
@@ -199,21 +180,51 @@ export function placeOnCell(
         total += weight;
       }
       if (total <= 0) continue;
-      const at = (y * side + x) * 4;
+      const at = (y * format.width + x) * 4;
       cell.data[at] = byteOf(red / total);
       cell.data[at + 1] = byteOf(green / total);
       cell.data[at + 2] = byteOf(blue / total);
       cell.data[at + 3] = 255;
-      on[y * side + x] = 1;
+      on[y * format.width + x] = 1;
     }
   }
   return {
     cell,
     on,
     scale,
-    anchor: { x: ANCHOR.x * unit, y: ANCHOR.y * unit },
-    overflow: overflowOf(silhouette.box, { sourceX, sourceY, side }),
+    overflow: overflowOf(silhouette.box, { sourceX, sourceY, format }),
   };
+}
+
+/** The point of the subject a format pins, and the point of the box it goes on. */
+function pinningOf(
+  format: Format,
+  mask: Mask,
+): { held: { x: number; y: number }; pin: { x: number; y: number } } {
+  switch (format.pin.kind) {
+    case 'feet': {
+      const sole = soleOf(mask);
+      return {
+        held: { x: sole.x + 0.5, y: mask.box.bottom + 1 },
+        pin: { x: format.pin.column + 0.5, y: format.pin.row + 1 },
+      };
+    }
+    case 'crown': {
+      const crown = crownOf(mask);
+      return {
+        held: { x: crown.x + 0.5, y: mask.box.top },
+        pin: { x: format.width / 2, y: format.height * format.pin.air },
+      };
+    }
+    case 'box':
+      return {
+        held: {
+          x: (mask.box.left + mask.box.right + 1) / 2,
+          y: (mask.box.top + mask.box.bottom + 1) / 2,
+        },
+        pin: { x: format.width / 2, y: format.height / 2 },
+      };
+  }
 }
 
 /**
@@ -272,11 +283,15 @@ function sharpenWeights(
 
 function overflowOf(
   box: Box,
-  frame: { sourceX: (edge: number) => number; sourceY: (edge: number) => number; side: number },
+  frame: {
+    sourceX: (edge: number) => number;
+    sourceY: (edge: number) => number;
+    format: Format;
+  },
 ): Overflow {
   // The cell edges the subject's own box falls on, found by walking the mapping backwards.
-  const cellX = (source: number) => invert(frame.sourceX, source, frame.side);
-  const cellY = (source: number) => invert(frame.sourceY, source, frame.side);
+  const cellX = (source: number) => invert(frame.sourceX, source, frame.format.width);
+  const cellY = (source: number) => invert(frame.sourceY, source, frame.format.height);
   const left = cellX(box.left);
   const right = cellX(box.right + 1);
   const top = cellY(box.top);
@@ -284,8 +299,8 @@ function overflowOf(
   return {
     left: Math.max(0, Math.ceil(-left)),
     top: Math.max(0, Math.ceil(-top)),
-    right: Math.max(0, Math.ceil(right - frame.side)),
-    bottom: Math.max(0, Math.ceil(bottom - frame.side)),
+    right: Math.max(0, Math.ceil(right - frame.format.width)),
+    bottom: Math.max(0, Math.ceil(bottom - frame.format.height)),
   };
 }
 

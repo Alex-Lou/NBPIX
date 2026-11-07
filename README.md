@@ -18,7 +18,9 @@ La première fois, `npm run dev` télécharge 4,6 Mo de poids et copie le moteur
   **modèle de segmentation** quand la couleur ne suffit pas — une peau éclairée devant un mur
   éclairé n'a aucune marche de couleur à trouver.
 - **Corriger à la main** au pinceau ce qu'aucun automatisme ne devine.
-- **Poser** le sujet dans sa case : les pieds sur l'ancre du jeu, ou la tête centrée pour un buste.
+- **Poser** le sujet dans le format voulu : les pieds sur l'ancre d'une planche, la tête centrée
+  pour un buste, ou simplement centré pour un objet. Planche 256, HD 512, portrait 96, objets de
+  16 × 16 à 128 × 128 — et le bouton **Remplir** trouve la hauteur qui tient dans la boîte.
 - **Pixeliser** : réduction à arêtes nettes, palette k-means en Lab, contour, grain réglable de ×½
   à ×4.
 - **Dire ce qu'il ne sait pas**, par son nom et avec le chiffre qui l'a levé, plutôt que de rendre

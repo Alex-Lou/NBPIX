@@ -9,29 +9,40 @@ charger. La différence est expliquée au §1.
 npm run dev
 ```
 
-Deux cadres, au choix dans la page :
+Le format est une **donnée** (`src/format.ts`) : une boîte, et une règle pour y poser le sujet.
+Trois règles suffisent à tout ce qu'on fabrique.
 
-| Cadre        | Taille               | Ce qu'il fait                             | Pour                               |
-| ------------ | -------------------- | ----------------------------------------- | ---------------------------------- |
-| **Planche**  | 256 px, ou 512 en HD | pose les pieds sur l'ancre du jeu         | une image de combattant en pied    |
-| **Portrait** | **96 px**            | centre la tête, laisse les épaules sortir | un buste pour l'écran de sélection |
+| Épinglage | Ce qu'il fait                                                                   | Formats                     |
+| --------- | ------------------------------------------------------------------------------- | --------------------------- |
+| `feet`    | la dernière rangée des pieds sur une rangée donnée, leur milieu sur une colonne | Planche 256, Planche HD 512 |
+| `crown`   | le sommet du crâne sous un peu d'air, centré                                    | Portrait 96                 |
+| `box`     | le milieu du sujet au milieu du format                                          | Objet 16, 32, 48, 64, 128   |
 
-Et une **finesse** ×½ ×1 ×2 ×4 qui multiplie la taille réelle du carré sans rien changer au cadrage.
-Le grain d'un pixel art n'est rien d'autre que ça : à ×4 le même cadrage est dessiné quatre fois
-plus finement, à ×½ deux fois plus gros. Seul ×1 est la taille que le jeu lit ; au-delà, c'est une
-sous-couche à réduire d'autant.
+Les trois sont **le même calcul** — mettre à l'échelle et épingler — et ne diffèrent que par le
+point épinglé. Ajouter un format ne demande donc pas de toucher au calcul : c'est une ligne de
+données, qui porte aussi ses marges et sa rangée basse, donc les règles que la sortie doit tenir
+(§5.3) se lisent dans le format lui-même.
+
+Le bouton **Remplir le format** calcule la hauteur qui fait tenir le sujet, marges comprises :
+pour un objet de 16 × 16 c'est le geste normal.
+
+Et une **finesse** ×½ ×1 ×2 ×4 qui multiplie la taille réelle du format sans rien changer au
+cadrage. Le grain d'un pixel art n'est rien d'autre que ça : à ×4 le même cadrage est dessiné
+quatre fois plus finement, à ×½ deux fois plus gros. Un format plus fin est tenu aux **mêmes
+règles à son échelle** : 4 px de marge à ×1 font 8 px à ×2, parce que ce sont les mêmes 2 pixels
+du monde.
 
 ## 0. Ce que la source doit avoir
 
 L'outil ne comprend rien, il mesure. Pour qu'il trouve l'ancre et l'échelle, l'image doit remplir
 quatre conditions :
 
-| Condition                                                 | Pourquoi                                                                                                                                                                               |
-| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Corps entier, **pieds visibles et posés** (cadre planche) | La rangée la plus basse du sujet devient la ligne des semelles. Des pieds coupés, et l'ancre est fausse. En cadre portrait, au contraire, il n'en faut pas : c'est la tête qui compte. |
-| **Un seul sujet**                                         | Deux silhouettes, et la boîte englobante ne veut plus rien dire.                                                                                                                       |
-| **Fond uni, ou canal alpha**                              | Sans modèle de segmentation, un fond chargé ne se détoure pas (§2).                                                                                                                    |
-| **Tourné vers la droite**                                 | Convention des planches ; le moteur retourne le sprite. La case **Retourner** est là pour les autres.                                                                                  |
+| Condition                                                    | Pourquoi                                                                                                                                                                               |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Corps entier, **pieds visibles et posés** (épinglage `feet`) | La rangée la plus basse du sujet devient la ligne des semelles. Des pieds coupés, et l'ancre est fausse. En cadre portrait, au contraire, il n'en faut pas : c'est la tête qui compte. |
+| **Un seul sujet**                                            | Deux silhouettes, et la boîte englobante ne veut plus rien dire.                                                                                                                       |
+| **Fond uni, ou canal alpha**                                 | Sans modèle de segmentation, un fond chargé ne se détoure pas (§2).                                                                                                                    |
+| **Tourné vers la droite**                                    | Convention des planches ; le moteur retourne le sprite. La case **Retourner** est là pour les autres.                                                                                  |
 
 Un rendu Blender ou une image générée en PNG transparent remplit les quatre d'office. Une photo en
 pied devant un mur uni marche aussi.

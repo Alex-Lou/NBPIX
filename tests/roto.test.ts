@@ -12,6 +12,14 @@ import type { Bitmap } from '../src/pixels';
 import { bitmap } from '../src/pixels';
 import { PIXELIZE_DEFAULTS, pixelize } from '../src/pixelize';
 import { placeOnCell, PLACEMENT_DEFAULTS, PORTRAIT_DEFAULTS } from '../src/place';
+import {
+  atFinesse,
+  boxFormat,
+  fighterFormat,
+  fittingHeight,
+  FORMATS,
+  PORTRAIT,
+} from '../src/format';
 import type { Corners } from '../src/silhouette';
 import {
   crownOf,
@@ -25,7 +33,7 @@ import {
 } from '../src/silhouette';
 import type { Concern } from '../src/concerns';
 import { anchorIsAGuess, concernsOf } from '../src/concerns';
-import { pipelineProblems } from '../src/rules';
+import { pipelineProblems, rulesOf } from '../src/rules';
 import { stamp, stroke } from '../src/brush';
 import { listOf, sentenceOf } from '../src/words';
 import { inputOf, maskOf } from '../src/segment';
@@ -249,7 +257,7 @@ describe('placement', () => {
     const image = standing();
     return placeOnCell(image, found(image), {
       ...PLACEMENT_DEFAULTS,
-      cell: CELL_SIZE,
+      format: fighterFormat(1),
       height,
       ...over,
     });
@@ -294,7 +302,7 @@ describe('pixelize', () => {
     const image = standing();
     const placed = placeOnCell(image, found(image), {
       ...PLACEMENT_DEFAULTS,
-      cell: CELL_SIZE,
+      format: fighterFormat(1),
       height: 157,
     });
     return { placed, out: pixelize(placed.cell, placed.on, { ...PIXELIZE_DEFAULTS, ...over }) };
@@ -347,7 +355,8 @@ describe('portrait', () => {
     placeOnCell(image, found(image), { ...PORTRAIT_DEFAULTS, ...over });
 
   it('keeps the size the pipeline asks a portrait for', () => {
-    expect(PORTRAIT_DEFAULTS.cell).toBe(PORTRAIT_SIZE);
+    expect(PORTRAIT_DEFAULTS.format.width).toBe(PORTRAIT_SIZE);
+    expect(PORTRAIT_DEFAULTS.format.height).toBe(PORTRAIT_SIZE);
   });
 
   it('measures the crown as soleOf measures the feet', () => {
@@ -368,7 +377,7 @@ describe('portrait', () => {
     const image = bust();
     const mask = found(image);
     const placed = place(image);
-    const kinds = concernsOf(mask, soleOf(mask), placed.overflow, 'portrait').map((c) => c.kind);
+    const kinds = concernsOf(mask, soleOf(mask), placed.overflow, 'crown').map((c) => c.kind);
     expect(kinds).not.toContain('narrow-base');
     expect(kinds).not.toContain('cut-off');
     expect(kinds).not.toContain('overflow');
@@ -380,9 +389,7 @@ describe('portrait', () => {
       for (let y = 44; y <= 79; y++) for (let x = 44; x <= 55; x++) set(x, y, SUBJECT);
     });
     const mask = found(image);
-    const kinds = concernsOf(mask, soleOf(mask), place(image).overflow, 'portrait').map(
-      (c) => c.kind,
-    );
+    const kinds = concernsOf(mask, soleOf(mask), place(image).overflow, 'crown').map((c) => c.kind);
     expect(kinds).toContain('cut-off');
   });
 
@@ -500,7 +507,7 @@ describe('fidélité', () => {
     const mask = silhouetteOf(photo, SILHOUETTE_DEFAULTS, toLab);
     const placed = placeOnCell(photo, mask, {
       ...PLACEMENT_DEFAULTS,
-      cell: CELL_SIZE,
+      format: fighterFormat(1),
       height: bottom - top + 1,
       nudgeX: ANCHOR_IS_A_JUDGEMENT,
     });
@@ -517,7 +524,7 @@ describe('fidélité', () => {
     const mask = silhouetteOf(photo, SILHOUETTE_DEFAULTS, toLab);
     const placed = placeOnCell(photo, mask, {
       ...PLACEMENT_DEFAULTS,
-      cell: CELL_SIZE,
+      format: fighterFormat(1),
       height: bottom - top + 1,
       nudgeX: ANCHOR_IS_A_JUDGEMENT,
       // The box filter the chain used before: every pixel the average of what it covers.
@@ -594,34 +601,32 @@ describe('règles du pipeline', () => {
 
   it('takes a cell that keeps its margins', () => {
     const { cell, on } = square(CELL_SIZE, { left: 40, top: 40, right: 200, bottom: 248 });
-    expect(pipelineProblems(cell, on, 'fighter', CELL_SIZE)).toEqual([]);
+    expect(pipelineProblems(cell, on, fighterFormat(1))).toEqual([]);
   });
 
   it('refuses a cell drawn to the edge, in the pipeline’s own words', () => {
     const { cell, on } = square(CELL_SIZE, { left: 0, top: 40, right: 200, bottom: 248 });
-    const problems = pipelineProblems(cell, on, 'fighter', CELL_SIZE);
+    const problems = pipelineProblems(cell, on, fighterFormat(1));
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain("cell's edge");
   });
 
   it('refuses a cell drawn under the ground', () => {
     const { cell, on } = square(CELL_SIZE, { left: 40, top: 40, right: 200, bottom: 254 });
-    expect(pipelineProblems(cell, on, 'fighter', CELL_SIZE).join(' ')).toContain(
-      'under the ground',
-    );
+    expect(pipelineProblems(cell, on, fighterFormat(1)).join(' ')).toContain('under the ground');
   });
 
   it('lets a bust fill its square to the bottom, which a portrait may', () => {
     const { cell, on } = square(PORTRAIT_SIZE, { left: 0, top: 0, right: 95, bottom: 95 });
-    expect(pipelineProblems(cell, on, 'portrait', PORTRAIT_SIZE)).toEqual([]);
+    expect(pipelineProblems(cell, on, PORTRAIT)).toEqual([]);
   });
 
   it('holds a finer square to the same rules at its own scale', () => {
     // 8 px of margin at finesse x2 is the same 2 world pixels as 4 px at x1.
     const tight = square(CELL_SIZE * 2, { left: 6, top: 40, right: 400, bottom: 496 });
-    expect(pipelineProblems(tight.cell, tight.on, 'fighter', CELL_SIZE)).toHaveLength(1);
+    expect(pipelineProblems(tight.cell, tight.on, atFinesse(fighterFormat(1), 2))).toHaveLength(1);
     const fine = square(CELL_SIZE * 2, { left: 10, top: 40, right: 400, bottom: 496 });
-    expect(pipelineProblems(fine.cell, fine.on, 'fighter', CELL_SIZE)).toEqual([]);
+    expect(pipelineProblems(fine.cell, fine.on, atFinesse(fighterFormat(1), 2))).toEqual([]);
   });
 });
 
@@ -801,5 +806,95 @@ describe('le contrat de NayosBeat', () => {
     expect(LOWEST_ROW).toBeGreaterThan(ANCHOR.y);
     expect(LOWEST_ROW).toBeLessThan(CELL_SIZE);
     expect(STANDING_HEIGHT).toBeLessThan(ANCHOR.y);
+  });
+});
+
+/**
+ * Un format, c'est une boîte et une règle pour y poser le sujet. Ce qui est vérifié ici, c'est que
+ * les trois règles posent bien où elles disent, et qu'un format tient ses promesses quelle que
+ * soit la finesse.
+ */
+describe('formats', () => {
+  /** Un sujet bien à l'intérieur de son cadre, plus haut que large. */
+  function subject(): Bitmap {
+    return scene(100, 80, WALL, (set) => {
+      for (let y = 10; y <= 59; y++) for (let x = 30; x <= 49; x++) set(x, y, SUBJECT);
+    });
+  }
+
+  it('centre un objet dans sa boîte, sans rien devoir à une ancre', () => {
+    const image = subject();
+    const placed = placeOnCell(image, found(image), {
+      ...PLACEMENT_DEFAULTS,
+      format: boxFormat(32),
+      height: 24,
+    });
+    const box = drawnBox(placed.cell);
+    expect((box.left + box.right) / 2).toBeCloseTo(15.5, 0);
+    expect((box.top + box.bottom) / 2).toBeCloseTo(15.5, 0);
+  });
+
+  it('tient dans la boîte, marges comprises, quand on demande de remplir', () => {
+    const image = subject();
+    const mask = found(image);
+    const format = boxFormat(16);
+    const height = fittingHeight(format, {
+      width: mask.box.right - mask.box.left + 1,
+      height: mask.box.bottom - mask.box.top + 1,
+    });
+    const placed = placeOnCell(image, mask, { ...PLACEMENT_DEFAULTS, format, height });
+    const box = drawnBox(placed.cell);
+    expect(box.left).toBeGreaterThanOrEqual(format.margin);
+    expect(box.top).toBeGreaterThanOrEqual(format.margin);
+    expect(box.right).toBeLessThanOrEqual(format.width - 1 - format.margin);
+    expect(box.bottom).toBeLessThanOrEqual(format.height - 1 - format.margin);
+    expect(pipelineProblems(placed.cell, placed.on, format)).toEqual([]);
+  });
+
+  it('garde les pieds sur l’ancre, quel que soit le format de planche', () => {
+    const image = subject();
+    for (const scale of [1, 2]) {
+      const format = fighterFormat(scale);
+      const placed = placeOnCell(image, found(image), {
+        ...PLACEMENT_DEFAULTS,
+        format,
+        height: 100 * scale,
+      });
+      const box = drawnBox(placed.cell);
+      const pin = format.pin;
+      expect(pin.kind).toBe('feet');
+      if (pin.kind !== 'feet') return;
+      expect(box.bottom).toBe(pin.row);
+      expect((box.left + box.right) / 2).toBeCloseTo(pin.column, 0);
+    }
+  });
+
+  it('dessine la même chose, plus finement, à une autre finesse', () => {
+    const format = fighterFormat(1);
+    const finer = atFinesse(format, 2);
+    expect(finer.width).toBe(format.width * 2);
+    expect(finer.margin).toBe(format.margin * 2);
+    // La rangée basse est un indice, pas une longueur : elle se décale d'un pixel de moins.
+    expect(finer.lowestRow).toBe((format.lowestRow + 1) * 2 - 1);
+    const pin = finer.pin;
+    expect(pin.kind).toBe('feet');
+    if (pin.kind !== 'feet') return;
+    expect(pin.column).toBe(ANCHOR.x * 2);
+  });
+
+  it('propose à chaque format une hauteur qui a du sens pour lui', () => {
+    for (const format of FORMATS) {
+      expect(format.height0).toBeGreaterThan(0);
+      expect(format.height0).toBeLessThanOrEqual(format.height);
+      expect(format.margin * 2).toBeLessThan(Math.min(format.width, format.height));
+      expect(format.lowestRow).toBeLessThan(format.height);
+    }
+  });
+
+  it('tient les règles du jeu sur ses propres formats, et pas plus', () => {
+    // Un objet de 16 px n'a aucune ancre à tenir : seules sa taille et ses marges comptent.
+    const tiny = boxFormat(16);
+    expect(tiny.pin.kind).toBe('box');
+    expect(rulesOf(tiny)).toMatchObject({ width: 16, height: 16, frames: 1, margin: tiny.margin });
   });
 });

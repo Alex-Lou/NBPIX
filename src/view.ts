@@ -4,9 +4,8 @@
  * anchor are judged by eye, not by a number.
  */
 
-import { ANCHOR, CELL_SIZE } from './game/contract.ts';
 import type { Bitmap } from './pixels.ts';
-import type { Frame } from './place.ts';
+import type { Format } from './format.ts';
 import type { Mask, Paint } from './silhouette.ts';
 import { soleOf } from './silhouette.ts';
 
@@ -85,7 +84,7 @@ const MARK = '#ffb020';
 export function drawCell(
   canvas: HTMLCanvasElement,
   cell: Bitmap,
-  shown: { readonly zoom: number; readonly frame: Frame; readonly guides: boolean },
+  shown: { readonly zoom: number; readonly format: Format; readonly guides: boolean },
 ): void {
   const { zoom } = shown;
   canvas.width = cell.width * zoom;
@@ -102,21 +101,35 @@ export function drawCell(
   context.drawImage(canvasOf(cell), 0, 0, canvas.width, canvas.height);
   if (!shown.guides) return;
   context.lineWidth = 1;
-  if (shown.frame === 'portrait') {
-    // The game's own framing: the head's middle at 45 % of the square, its crown near a sixth
-    // down (tools/sprites/aseprite-template.ts). Lines to aim at, nothing the tool enforces.
+  const { pin } = shown.format;
+  if (pin.kind === 'crown') {
+    // Le cadrage du jeu : le milieu de la tête à 45 % du carré, la couronne vers le sixième.
+    // Des lignes à viser, rien que l'outil impose.
     across(context, (cell.width / 2) * zoom, undefined, canvas);
-    for (const share of [0.06, 0.45])
+    for (const share of [pin.air, 0.45]) {
       across(context, undefined, cell.height * share * zoom, canvas);
+    }
     return;
   }
-  const unit = cell.width / CELL_SIZE;
-  const x = (ANCHOR.x * unit + 0.5) * zoom;
-  const y = (ANCHOR.y * unit + 0.5) * zoom;
+  if (pin.kind === 'box') {
+    // Le milieu du format, et la marge que la sortie doit tenir.
+    across(context, (cell.width / 2) * zoom, undefined, canvas);
+    across(context, undefined, (cell.height / 2) * zoom, canvas);
+    const margin = shown.format.margin * zoom;
+    if (margin > 0) {
+      context.strokeStyle = FAINT;
+      context.setLineDash([...DASH]);
+      context.strokeRect(margin, margin, canvas.width - 2 * margin, canvas.height - 2 * margin);
+      context.setLineDash([]);
+    }
+    return;
+  }
+  const x = (pin.column + 0.5) * zoom;
+  const y = (pin.row + 0.5) * zoom;
   across(context, x, undefined, canvas);
   across(context, undefined, y, canvas);
-  // Solid only at the anchor itself: the lines have to be readable over a pale sprite without
-  // hiding the pixels they are there to check.
+  // Plein seulement sur l'ancre elle-même : les lignes doivent rester lisibles sur un sprite clair
+  // sans cacher les pixels qu'elles servent à vérifier.
   context.strokeStyle = MARK;
   const arm = 6 * zoom;
   context.beginPath();

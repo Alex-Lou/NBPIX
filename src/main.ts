@@ -8,7 +8,8 @@
  * anchor is the point of having a page at all.
  */
 
-import { CELL_SIZE } from './game/contract.ts';
+import type { Format } from './format.ts';
+import { atFinesse, fittingHeight, FORMATS } from './format.ts';
 import { toLab } from './game/lab.ts';
 import type { Sheet } from './brush.ts';
 import { stamp, stroke } from './brush.ts';
@@ -17,13 +18,7 @@ import { controlsOn } from './controls.ts';
 import type { Bitmap } from './pixels.ts';
 import { labBufferOf } from './pixels.ts';
 import type { Placed } from './place.ts';
-import {
-  PLACEMENT_DEFAULTS,
-  placeOnCell,
-  PORTRAIT_DEFAULTS,
-  PORTRAIT_SIZE,
-  STANDING_HEIGHT,
-} from './place.ts';
+import { PLACEMENT_DEFAULTS, placeOnCell } from './place.ts';
 import type { Pixelized } from './pixelize.ts';
 import { PIXELIZE_DEFAULTS, pixelize } from './pixelize.ts';
 import { pipelineProblems } from './rules.ts';
@@ -51,10 +46,9 @@ const state = {
   /** What the brush lays down: 1 paints subject, -1 paints background. */
   brush: 1 as 1 | -1,
   radius: 24,
-  frame: PLACEMENT_DEFAULTS.frame,
-  /** The frame's own size, before `finesse`. */
-  cell: PLACEMENT_DEFAULTS.cell,
-  /** The subject's height in the frame's own pixels, before `finesse`. */
+  /** The box and the rule for putting the subject in it, before `finesse` (format.ts). */
+  format: PLACEMENT_DEFAULTS.format,
+  /** The subject's height in the format's own pixels, before `finesse`. */
   height: PLACEMENT_DEFAULTS.height,
   /**
    * How many pixels the square really holds, as a multiple of the frame's own size. The grain of
@@ -100,6 +94,10 @@ let seen: { readonly floor: number; readonly on: Uint8Array } | undefined;
 /** True while the model is thinking, so the page says so instead of looking stuck. */
 let thinking = false;
 let made: Pixelized | undefined;
+/** The format as it was really drawn, finesse included: what the page reports and checks. */
+let shownFormat: Format = PLACEMENT_DEFAULTS.format;
+/** The mask of the last pass, so « remplir » knows how big the subject is. */
+let mask: Mask | undefined;
 
 // The page -------------------------------------------------------------------------------------
 
@@ -147,6 +145,8 @@ const clear = ui.button('Effacer les retouches', () => {
 });
 clear.disabled = true;
 
+const fitButton = ui.button('Remplir le format', fill);
+
 const save = ui.button('Enregistrer la case (PNG)', exportCell);
 save.disabled = true;
 
@@ -169,20 +169,25 @@ function chooseSource(value: number): void {
   state.source = value === 1 ? 'model' : 'key';
 }
 
-/** Picking a frame sets its size and keeps the subject's height to scale. */
-function chooseFrame(size: number): void {
-  if (size === PORTRAIT_SIZE) {
-    state.frame = 'portrait';
-    state.cell = PORTRAIT_SIZE;
-    state.height = PORTRAIT_DEFAULTS.height;
-    return;
-  }
-  state.height =
-    state.frame === 'portrait'
-      ? Math.round((STANDING_HEIGHT * size) / CELL_SIZE)
-      : Math.round((state.height * size) / state.cell);
-  state.frame = 'fighter';
-  state.cell = size;
+/** Picking a format takes its own suggested height: a 16 × 16 object is not a fighter. */
+function chooseFormat(index: number): void {
+  const picked = FORMATS[index];
+  if (!picked) return;
+  state.format = picked;
+  state.height = picked.height0;
+  state.nudgeX = 0;
+  state.nudgeY = 0;
+}
+
+/** The height that makes the subject fill its format, margins kept. */
+function fill(): void {
+  const box = mask?.box;
+  if (!box) return;
+  state.height = fittingHeight(state.format, {
+    width: box.right - box.left + 1,
+    height: box.bottom - box.top + 1,
+  });
+  schedule();
 }
 
 must('controls').append(
@@ -249,18 +254,20 @@ must('controls').append(
     clear,
   ]),
   ui.group('Pose', [
-    ui.choice('Cadre', () => state.cell, chooseFrame, [
-      { value: CELL_SIZE, label: `Planche, ${CELL_SIZE} px` },
-      { value: CELL_SIZE * 2, label: `Planche HD, ${CELL_SIZE * 2} px` },
-      { value: PORTRAIT_SIZE, label: `Portrait, ${PORTRAIT_SIZE} px` },
-    ]),
+    ui.choice(
+      'Format',
+      () => FORMATS.indexOf(state.format),
+      chooseFormat,
+      FORMATS.map((format, index) => ({ value: index, label: format.name })),
+    ),
     ui.range(
       'Hauteur du sujet',
       () => state.height,
       (v) => (state.height = v),
-      { min: 20, max: CELL_SIZE * 2, step: 1 },
+      { min: 2, max: 512, step: 1 },
       (value) => `${value} px`,
     ),
+    fitButton,
     ui.check(
       'Retourner (doit regarder à droite)',
       () => state.flip,
@@ -420,13 +427,13 @@ function run(): void {
       automatic = { key, mask: silhouetteOf(loaded.image, options, toLab, loaded.lab) };
     }
   }
-  const mask = painted(automatic.mask, loaded.paint, loaded.canvas);
+  mask = painted(automatic.mask, loaded.paint, loaded.canvas);
+  const format = atFinesse(state.format, state.finesse);
   const placed = placeOnCell(
     loaded.image,
     mask,
     {
-      frame: state.frame,
-      cell: Math.round(state.cell * state.finesse),
+      format,
       height: Math.round(state.height * state.finesse),
       flip: state.flip,
       nudgeX: Math.round(state.nudgeX * state.finesse),
@@ -435,6 +442,7 @@ function run(): void {
     },
     loaded.lab,
   );
+  shownFormat = format;
   made = pixelize(placed.cell, placed.on, {
     kuwahara: state.kuwahara,
     sharpen: state.sharpen,
@@ -449,11 +457,7 @@ function run(): void {
   sourceView.hidden = false;
   cellView.hidden = false;
   drawSource(sourceCanvas, loaded.image, mask, loaded.paint);
-  drawCell(cellCanvas, made.cell, {
-    zoom: state.zoom,
-    frame: state.frame,
-    guides: state.guides,
-  });
+  drawCell(cellCanvas, made.cell, { zoom: state.zoom, format, guides: state.guides });
   report(loaded.image, mask, placed, made);
 }
 
@@ -487,41 +491,42 @@ function note(kind: string, text: string): void {
   status.append(line);
 }
 
-function report(image: Bitmap, mask: Mask, placed: Placed, pixels: Pixelized): void {
-  const sole = soleOf(mask);
-  const concerns = concernsOf(mask, sole, placed.overflow, state.frame);
-  const guessed = state.frame === 'fighter' && anchorIsAGuess(concerns);
-  const height = mask.box.bottom - mask.box.top + 1;
-  const scaled = `${height} px de source → ${state.height} px de carré (×${placed.scale.toFixed(3)})`;
+function report(image: Bitmap, found: Mask, placed: Placed, pixels: Pixelized): void {
+  const sole = soleOf(found);
+  const { pin } = shownFormat;
+  const concerns = concernsOf(found, sole, placed.overflow, pin.kind);
+  const guessed = pin.kind === 'feet' && anchorIsAGuess(concerns);
+  const height = found.box.bottom - found.box.top + 1;
+  const scaled = `${height} px de source → ${state.height} px de format (×${placed.scale.toFixed(3)})`;
+  /** What this format does with the subject, said plainly. */
+  const posed =
+    pin.kind === 'feet'
+      ? guessed
+        ? 'base posée sur l’ancre — mais voir ci-dessous, ce ne sont pas des pieds.'
+        : `pieds posés sur l’ancre ${pin.column}, ${pin.row}, base large de ${sole.width} px.`
+      : pin.kind === 'crown'
+        ? `tête centrée, couronne à ${Math.round(pin.air * 100)} % du haut. Les épaules sortent par le bas, c’est voulu.`
+        : `centré dans le format, ${shownFormat.margin} px de marge demandée.`;
   status.textContent = [
-    `Silhouette : ${mask.from === 'alpha' ? 'canal alpha de l’image' : mask.from === 'model' ? `vue par le modèle (seuil ${Math.round(state.floor * 100)} %)` : `fond détouré depuis ${mask.seeds} coin(s)`} — ${mask.pixels.toLocaleString('fr-FR')} px, boîte ${mask.box.right - mask.box.left + 1} × ${height} px, ${mask.islands} îlot(s) gardé(s)${mask.specks > 0 ? `, ${mask.specks} poussière(s) écartée(s)` : ''}.`,
-    state.frame === 'portrait'
-      ? `Cadrage : ${scaled}, tête centrée sur le carré, couronne à 6 % du haut. Les épaules sortent par le bas, c’est voulu.`
-      : `Pose : ${scaled}, ` +
-        (guessed
-          ? 'base posée sur l’ancre — mais voir ci-dessous, ce ne sont pas des pieds.'
-          : `pieds posés sur l’ancre, base large de ${sole.width} px.`),
+    `Silhouette : ${found.from === 'alpha' ? 'canal alpha de l’image' : found.from === 'model' ? `vue par le modèle (seuil ${Math.round(state.floor * 100)} %)` : `fond détouré depuis ${found.seeds} coin(s)`} — ${found.pixels.toLocaleString('fr-FR')} px, boîte ${found.box.right - found.box.left + 1} × ${height} px, ${found.islands} îlot(s) gardé(s)${found.specks > 0 ? `, ${found.specks} poussière(s) écartée(s)` : ''}.`,
+    `Pose : ${scaled}, ${posed}`,
     `Pixels : ${pixels.colors} couleur(s)${state.colors > 0 ? ` (${state.method === 'kmeans' ? 'k-means Lab' : 'médiane RVB'}, ${state.colors} demandées)` : ''}, arêtes ${state.edge === 0 ? 'moyennées' : `à ${state.edge}`}.`,
     ...(state.finesse === 1
       ? []
       : [
-          `Finesse ×${state.finesse} : le carré fait ${placed.cell.width} px au lieu de ${state.cell}. À réduire d’autant avant de l’installer — le jeu ne lit que la taille du cadre.`,
+          `Finesse ×${state.finesse} : le format fait ${shownFormat.width} × ${shownFormat.height} px au lieu de ${state.format.width} × ${state.format.height}. À réduire d’autant avant de l’installer.`,
         ]),
   ].join('\n');
   for (const concern of concerns) note('warn', `⚠ ${sentenceOf(concern)}`);
   // The pipeline's own verdict, from the pipeline's own engine (rules.ts).
-  const refused = pipelineProblems(pixels.cell, placed.on, state.frame, state.cell);
+  const refused = pipelineProblems(pixels.cell, placed.on, shownFormat);
   for (const problem of refused) note('warn', `✖ ${problem}`);
   if (refused.length === 0) {
-    note(
-      'fine',
-      '✔ La géométrie passe les règles de « npm run sprites » (taille, marges, rangée basse).',
-    );
+    note('fine', `✔ ${shownFormat.name} : taille, marges et rangée basse tenues.`);
   }
   sourceInfo.textContent = `${image.width} × ${image.height} px`;
   cellInfo.textContent = `${placed.cell.width} × ${placed.cell.height} px`;
-  cellLabel.textContent =
-    state.frame === 'portrait' ? 'Portrait' : state.cell === CELL_SIZE ? 'Case du jeu' : 'Case HD';
+  cellLabel.textContent = shownFormat.name;
 }
 
 function exportCell(): void {
@@ -531,7 +536,7 @@ function exportCell(): void {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `roto-${state.frame}-${made?.cell.width ?? 0}.png`;
+    link.download = `nbpix-${shownFormat.width}x${shownFormat.height}.png`;
     link.click();
     // Not before the browser has taken the blob: revoking in the same tick can cancel the save.
     window.setTimeout(() => {
@@ -610,8 +615,8 @@ async function load(blob: Blob): Promise<void> {
   automatic = undefined;
   seen = undefined;
   clear.disabled = true;
-  // A subject that fills the frame is the common case: start at the measured standing height.
-  state.height = Math.round((STANDING_HEIGHT * state.cell) / CELL_SIZE);
+  // Chaque format propose sa hauteur : un objet de 16 px n'est pas un combattant.
+  state.height = state.format.height0;
   drop.hidden = true;
   run();
 }

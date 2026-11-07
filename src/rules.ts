@@ -13,12 +13,11 @@
  * subject breaks most often.
  */
 
-import { CELL_MARGIN, LOWEST_ROW, PORTRAIT_SIZE } from './game/contract.ts';
 import type { DrawnRules } from './game/drawn-rules.ts';
 import { checkDrawn } from './game/drawn-rules.ts';
 import type { IndexedImage } from './game/png.ts';
 import type { Bitmap } from './pixels.ts';
-import type { Frame } from './place.ts';
+import type { Format } from './format.ts';
 
 /**
  * The cell as two slots, empty and drawn. The geometric rules only ever ask whether a pixel is
@@ -31,36 +30,24 @@ function shapeOf(cell: Bitmap, on: Uint8Array): IndexedImage {
 }
 
 /**
- * The rules this square is held to. `native` is the frame's own size, so that a square drawn finer
- * than the game's (finesse ×2, ×4) is held to the same rules at its own scale: 4 px of margin at
- * ×1 is 8 px at ×2, because it is the same 2 world pixels.
+ * The rules this square is held to — read straight off the format, which already carries them at
+ * its own scale: 4 px of margin at ×1 is 8 px at ×2, because it is the same 2 world pixels
+ * (format.ts `atFinesse`).
  */
-export function rulesOf(frame: Frame, cell: number, native: number): DrawnRules {
-  const unit = native === 0 ? 1 : cell / native;
+export function rulesOf(format: Format): DrawnRules {
   return {
-    width: cell,
-    height: cell,
+    width: format.width,
+    height: format.height,
     frames: 1,
     slots: 2,
     filled: true,
-    margin: frame === 'portrait' ? 0 : Math.round(CELL_MARGIN * unit),
-    lowestRow: frame === 'portrait' ? cell - 1 : Math.round((LOWEST_ROW + 1) * unit) - 1,
+    margin: format.margin,
+    lowestRow: format.lowestRow,
     transparency: 'any',
   };
 }
 
 /** What the pipeline would refuse about this square; empty when it would take it. */
-export function pipelineProblems(
-  cell: Bitmap,
-  on: Uint8Array,
-  frame: Frame,
-  native: number,
-): string[] {
-  const label = frame === 'portrait' ? 'portrait' : 'planche';
-  return checkDrawn(label, shapeOf(cell, on), rulesOf(frame, cell.width, native), undefined);
-}
-
-/** The frame's own size, whatever the finesse: what the game loads. */
-export function nativeSizeOf(frame: Frame, cell: number): number {
-  return frame === 'portrait' ? PORTRAIT_SIZE : cell;
+export function pipelineProblems(cell: Bitmap, on: Uint8Array, format: Format): string[] {
+  return checkDrawn(format.name, shapeOf(cell, on), rulesOf(format), undefined);
 }

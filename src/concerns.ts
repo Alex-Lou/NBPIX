@@ -11,7 +11,8 @@
  * They are data, not sentences — the page turns them into French, the tests read the names.
  */
 
-import type { Frame, Overflow } from './place.ts';
+import type { Pin } from './format.ts';
+import type { Overflow } from './place.ts';
 import type { Edges, Mask, Sole } from './silhouette.ts';
 import { edgesOf } from './silhouette.ts';
 
@@ -43,7 +44,7 @@ const EVERYTHING_KEPT = 0.95;
 const SPECKS = 3;
 
 /**
- * What the frame is for decides which judgements mean anything. A bust has no feet and is **meant**
+ * How a format pins its subject decides which judgements mean anything. A bust has no feet and is **meant**
  * to be cut at the bottom, so the two that guard the anchor are not raised for one — raising them
  * there would teach the eye to ignore the warnings, which costs more than silence.
  *
@@ -57,7 +58,7 @@ export function concernsOf(
   mask: Mask,
   sole: Sole,
   overflow: Overflow,
-  frame: Frame = 'fighter',
+  pin: Pin['kind'] = 'feet',
 ): Concern[] {
   const concerns: Concern[] = [];
   const area = mask.width * mask.height;
@@ -66,11 +67,13 @@ export function concernsOf(
   else if (share > EVERYTHING_KEPT) concerns.push({ kind: 'everything-kept', share });
   const width = mask.box.right - mask.box.left + 1;
   const base = width === 0 ? 0 : sole.width / width;
-  if (frame === 'fighter' && mask.pixels > 0 && base < NARROW_BASE) {
+  // Seul un format qui pose des pieds a une base à juger.
+  if (pin === 'feet' && mask.pixels > 0 && base < NARROW_BASE) {
     concerns.push({ kind: 'narrow-base', width: sole.width, share: base });
   }
   const edges = edgesOf(mask);
-  const cut = frame === 'portrait' ? { ...edges, bottom: false } : edges;
+  // Un buste est fait pour être coupé en bas ; une planche ou un objet, non.
+  const cut = pin === 'crown' ? { ...edges, bottom: false } : edges;
   if (mask.pixels > 0 && (cut.left || cut.top || cut.right || cut.bottom)) {
     concerns.push({ kind: 'cut-off', edges: cut });
   }
@@ -78,9 +81,7 @@ export function concernsOf(
   if (mask.dropped > 0) concerns.push({ kind: 'corner-dropped', dropped: mask.dropped });
   // A bust running off the bottom of its square is the point of a bust, not a problem.
   const spill =
-    frame === 'portrait'
-      ? overflow.left + overflow.top + overflow.right
-      : overflow.left + overflow.top + overflow.right + overflow.bottom;
+    overflow.left + overflow.top + overflow.right + (pin === 'crown' ? 0 : overflow.bottom);
   if (spill > 0) concerns.push({ kind: 'overflow', overflow });
   return concerns;
 }
