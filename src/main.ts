@@ -70,6 +70,7 @@ const state = {
   saturation: PIXELIZE_DEFAULTS.saturation,
   outline: PIXELIZE_DEFAULTS.outline,
   colors: STYLES[0]?.colors ?? PIXELIZE_DEFAULTS.colors,
+  dither: STYLES[0]?.dither ?? PIXELIZE_DEFAULTS.dither,
   orphans: PIXELIZE_DEFAULTS.orphans,
   zoom: 1,
   guides: true,
@@ -85,6 +86,12 @@ interface Work {
   readonly canvas: Uint8Array;
   /** Room for the model's mask, kept apart because `refine` writes over what it is given. */
   readonly cleaned: Uint8Array;
+  /**
+   * Un échantillon des couleurs du sujet, prises sur la source avant toute réduction : c'est là
+   * qu'on apprend la palette, pour qu'elle représente ce qu'on a donné à l'outil et non ce qui
+   * reste après coup.
+   */
+  sample?: Uint8ClampedArray;
 }
 
 let work: Work | undefined;
@@ -186,6 +193,7 @@ function chooseStyle(index: number): void {
   state.format = picked.format;
   state.height = picked.format.height0;
   state.colors = picked.colors;
+  state.dither = picked.dither;
   state.nudgeX = 0;
   state.nudgeY = 0;
   about.textContent = picked.about;
@@ -446,6 +454,7 @@ function run(): void {
     }
   }
   mask = painted(automatic.mask, loaded.paint, loaded.canvas);
+  loaded.sample = sampleOf(loaded.image, mask);
   const format = atFinesse(state.format, state.finesse);
   const placed = placeOnCell(
     loaded.image,
@@ -469,6 +478,9 @@ function run(): void {
     colors: state.colors,
     orphans: state.orphans,
     method: state.method,
+    dither: state.dither,
+    // Les couleurs de la source, pour y choisir la palette plutôt que sur l'image déjà réduite.
+    from: loaded.sample,
     ...(state.style.master ? { master: state.style.master } : {}),
   });
   if (fitSoon) {
@@ -504,6 +516,30 @@ function think(loaded: Work): void {
       ui.refresh();
       if (state.source === 'model') run();
     });
+}
+
+/** Au plus ce nombre de couleurs du sujet : de quoi apprendre une palette sans y passer la nuit. */
+const SAMPLE = 24_000;
+
+/** Les couleurs du sujet, prises sur la source à pas régulier. */
+function sampleOf(image: Bitmap, found: Mask): Uint8ClampedArray {
+  const total = found.pixels;
+  if (total === 0) return new Uint8ClampedArray(0);
+  const stride = Math.max(1, Math.floor(total / SAMPLE));
+  const taken = new Uint8ClampedArray(Math.ceil(total / stride) * 4);
+  let seen = 0;
+  let kept = 0;
+  for (let pixel = 0; pixel < found.on.length; pixel++) {
+    if ((found.on[pixel] ?? 0) === 0) continue;
+    if (seen++ % stride !== 0) continue;
+    if (kept * 4 + 3 >= taken.length) break;
+    taken[kept * 4] = image.data[pixel * 4] ?? 0;
+    taken[kept * 4 + 1] = image.data[pixel * 4 + 1] ?? 0;
+    taken[kept * 4 + 2] = image.data[pixel * 4 + 2] ?? 0;
+    taken[kept * 4 + 3] = 255;
+    kept++;
+  }
+  return taken.subarray(0, kept * 4);
 }
 
 // What the page says -----------------------------------------------------------------------------

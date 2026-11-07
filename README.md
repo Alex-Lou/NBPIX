@@ -21,14 +21,30 @@ La première fois, `npm run dev` télécharge 4,6 Mo de poids et copie le moteur
 - **Poser** le sujet dans le format voulu : les pieds sur l'ancre d'une planche, la tête centrée
   pour un buste, ou simplement centré pour un objet. Planche 256, HD 512, portrait 96, objets de
   16 × 16 à 128 × 128 — et le bouton **Remplir** trouve la hauteur qui tient dans la boîte.
-- **Pixeliser** : réduction à arêtes nettes, palette k-means en Lab, contour, grain réglable de ×½
-  à ×4.
+- **Convertir dans un style** : NES, Game Boy, SNES, Mega Drive ou moderne, avec les contraintes
+  réelles de chaque machine — 3 couleurs sur NES, 15 sur SNES, et leurs palettes respectives.
+- **Pixeliser** : réduction à arêtes nettes qui garde les formes fines, palette apprise sur la
+  source, tramage ordonné, contour, grain réglable.
 - **Dire ce qu'il ne sait pas**, par son nom et avec le chiffre qui l'a levé, plutôt que de rendre
   une réponse fausse et confiante.
 - **Vérifier** sa sortie avec le moteur de règles de NayosBeat lui-même.
 
 Tout est mesuré, pas réglé à l'œil : [`docs/methode.md`](docs/methode.md) donne les chiffres, les
 sources et les essais qui ont échoué.
+
+## Finir dans Aseprite
+
+```bash
+npm run aseprite -- mon-sprite.png
+```
+
+Transforme le PNG rendu par NBPIX en `.aseprite` **indexé**, sur sa propre palette — ce que toute
+console faisait et ce que NayosBeat attend de ses planches. Aseprite tourne sans interface ; donne
+son chemin avec `--aseprite` s'il n'est pas dans le PATH.
+
+Pour dessiner par-dessus ton image d'origine, ajoute-la en **calque de référence** dans Aseprite
+(_Calque → Nouveau calque de référence…_) : un calque de référence accepte les vraies couleurs là
+où un sprite indexé ne le pourrait pas, et une action de menu fait mieux que de l'automatiser.
 
 ## Ce qu'il ne fait pas encore
 

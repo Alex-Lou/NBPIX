@@ -145,6 +145,11 @@ export interface Style {
   readonly colors: number;
   /** La palette de la machine, quand elle en imposait une. */
   readonly master?: Master;
+  /**
+   * Combien tramer. Plus la palette est courte, plus le tramage compte : c'est lui qui rendait
+   * leurs dégradés aux machines qui n'avaient pas les teintes pour.
+   */
+  readonly dither: number;
 }
 
 /**
@@ -159,6 +164,7 @@ export const STYLES: readonly Style[] = [
     format: boxFormat(16, 0),
     colors: 3,
     master: NES,
+    dither: 1,
   },
   {
     name: 'Game Boy — objet 16 × 16',
@@ -167,6 +173,7 @@ export const STYLES: readonly Style[] = [
     format: boxFormat(16, 0),
     colors: 3,
     master: GAME_BOY,
+    dither: 1,
   },
   {
     name: 'NES — personnage 16 × 32',
@@ -174,6 +181,7 @@ export const STYLES: readonly Style[] = [
     format: { ...boxFormat(16, 0), name: 'NES 16 × 32', height: 32, lowestRow: 31, height0: 30 },
     colors: 3,
     master: NES,
+    dither: 1,
   },
   {
     name: 'SNES — objet 32 × 32',
@@ -181,6 +189,7 @@ export const STYLES: readonly Style[] = [
     format: boxFormat(32, 1),
     colors: 15,
     master: SNES,
+    dither: 0.6,
   },
   {
     name: 'Mega Drive — objet 32 × 32',
@@ -188,6 +197,7 @@ export const STYLES: readonly Style[] = [
     format: boxFormat(32, 1),
     colors: 15,
     master: MEGA_DRIVE,
+    dither: 0.6,
   },
   {
     name: 'SNES — personnage 64 × 64',
@@ -195,29 +205,48 @@ export const STYLES: readonly Style[] = [
     format: boxFormat(64, 2),
     colors: 15,
     master: SNES,
+    dither: 0.6,
   },
   {
     name: 'Moderne — 128 × 128',
     about: 'Aucune contrainte de machine : autant de couleurs que le dessin en demande.',
     format: boxFormat(128, 4),
     colors: 32,
+    dither: 0,
+  },
+  {
+    name: 'Moderne — 256 × 256',
+    about: 'Grand format, 48 couleurs : pour un objet qu’on regarde de près.',
+    format: boxFormat(256, 8),
+    colors: 48,
+    dither: 0,
+  },
+  {
+    name: 'Moderne — 512 × 512',
+    about: 'Le plus fin que l’outil propose. Au-delà, c’est une photo réduite, plus du pixel art.',
+    format: boxFormat(512, 16),
+    colors: 64,
+    dither: 0,
   },
   {
     name: 'NayosBeat — planche 256',
     about: 'Le format du jeu : les pieds sur l’ancre, 4 px de marge.',
     format: fighterFormat(1),
     colors: 32,
+    dither: 0,
   },
   {
     name: 'NayosBeat — planche HD 512',
     about: 'Le même, dessiné deux fois plus finement.',
     format: fighterFormat(2),
     colors: 32,
+    dither: 0,
   },
   {
     name: 'NayosBeat — portrait 96',
     about: 'Le buste de l’écran de sélection : la tête centrée, les épaules sortent par le bas.',
     format: PORTRAIT,
     colors: 32,
+    dither: 0,
   },
 ];
