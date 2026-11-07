@@ -1,5 +1,5 @@
 /**
- * The chain that turns the placed subject into pixels (docs/art/roto.md §4). It is the one the
+ * The chain that turns the placed subject into pixels (docs/methode.md §4). It is the one the
  * stages already use (docs/art/manifeste-pixel-art.md §2, tools/stage/sahel/adapt.ts), kept in
  * the same order and cut down to what a character needs:
  *
@@ -19,7 +19,7 @@
  *   not a strip the game can load.
  * - **median cut rather than the superpixel method.** Gerstner et al., *Pixelated Image
  *   Abstraction* (NPAR 2012), optimise the segmentation and the palette together, which beats a
- *   downscale followed by a quantisation; the parameters are written down in docs/art/roto.md §6
+ *   downscale followed by a quantisation; the parameters are written down in docs/methode.md §6
  *   for the day this is worth doing. Median cut is already here and already tested
  *   (tools/sprites/quantize.ts).
  */
@@ -35,7 +35,7 @@ import { byteOf, copyOf, linearOf } from './pixels.ts';
  * How the palette is chosen. `median` is median cut over RGB (tools/sprites/quantize.ts), which
  * the stages use and which is already tested; `kmeans` is k-means in Lab, where distance means
  * what the eye means by it. Measured on a strip put back through the chain: ΔE 1.44 for median
- * cut, **0.15** for k-means (docs/art/roto.md §5.2).
+ * cut, **0.15** for k-means (docs/methode.md §5.2).
  */
 export type PaletteMethod = 'median' | 'kmeans';
 
@@ -78,7 +78,7 @@ export interface PixelizeOptions {
 }
 
 /**
- * Measured, not guessed (docs/art/roto.md §5.2): a strip blown up on a wall, put back through the
+ * Measured, not guessed (docs/methode.md §5.2): a strip blown up on a wall, put back through the
  * chain, and scored against the drawing it came from. Every step that costs more than it gives is
  * off by default and stays on a slider.
  *

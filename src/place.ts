@@ -1,5 +1,5 @@
 /**
- * The subject put on a sprite cell (docs/art/roto.md §3): scaled to the fighters' height and set
+ * The subject put on a sprite cell (docs/methode.md §3): scaled to the fighters' height and set
  * down with the soles on the game's anchor, so that what comes out of the tool is already in the
  * frame the game draws in — the one thing a generic pixel-art converter never does.
  *
@@ -48,7 +48,7 @@ export interface Placement {
    * sides, a colour that is in neither. Above 0, the pixel finds the dominant colour of what it
    * covers and takes that side — the idea behind content-adaptive downscaling (Kopf, Shamir &
    * Peers, SIGGRAPH Asia 2013) without its EM machinery. Measured on a strip put back through the
-   * chain: ΔE 2.53 at 0, **0.20** at 8 (docs/art/roto.md §5.2).
+   * chain: ΔE 2.53 at 0, **0.20** at 8 (docs/methode.md §5.2).
    */
   readonly edge: number;
 }

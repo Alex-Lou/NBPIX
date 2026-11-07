@@ -1,5 +1,5 @@
 /**
- * Everything the page needs to run the model, put where it can serve it: `npm run roto:model`.
+ * Everything the page needs to run the model, put where it can serve it: `npm run model`.
  *
  * Two kinds of file, one folder, all of it ignored by git (`model/`):
  *
@@ -10,7 +10,7 @@
  *   by Vite, with no CDN and nothing to configure. It works offline once fetched.
  *
  * Idempotent: a file already there with the right size and digest is left alone, so
- * `npm run roto` can call this every time and cost nothing after the first.
+ * `npm run dev` can call this every time and cost nothing after the first.
  *
  * The weights are U²-Net small (`u2netp`) — Qin et al., *U²-Net: Going Deeper with Nested
  * U-Structure for Salient Object Detection* — under the Apache License 2.0, which allows use and
@@ -38,7 +38,7 @@ const RUNTIME_FILES = ['ort-wasm-simd-threaded.mjs', 'ort-wasm-simd-threaded.was
 
 const NOTICE = `# D'où viennent ces fichiers
 
-Ce dossier est **ignoré par git** : \`npm run roto:model\` le remplit (src/model.ts).
+Ce dossier est **ignoré par git** : \`npm run model\` le remplit (src/model.ts).
 
 ## u2netp.onnx
 
@@ -93,7 +93,7 @@ async function main(): Promise<void> {
     const from = new URL(name, RUNTIME);
     if (!(await stat(from).catch(() => undefined))) {
       throw new Error(
-        `${name} est introuvable dans node_modules : lancer « npm ci » avant « npm run roto:model »`,
+        `${name} est introuvable dans node_modules : lancer « npm ci » avant « npm run model »`,
       );
     }
     await copyFile(fileURLToPath(from), fileURLToPath(new URL(name, HERE)));

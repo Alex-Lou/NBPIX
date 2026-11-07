@@ -1,5 +1,5 @@
 /**
- * The subject found by a model instead of by colour (docs/art/roto.md §2.2).
+ * The subject found by a model instead of by colour (docs/methode.md §2.2).
  *
  * The colour key cannot separate lit skin from a lit wall: they are the same colour and they touch,
  * so there is no step to find and no setting that finds one. A segmentation model does not look at
@@ -8,7 +8,7 @@
  *
  * **U²-Net small** (`u2netp`), 4.6 MB, Apache-2.0 — Qin et al., *U²-Net: Going Deeper with Nested
  * U-Structure for Salient Object Detection*. The weights are not in the repository: `npm run
- * roto:model` fetches them (tools/roto/model.ts), and `npm run roto` does it for you. Without them
+ * model` fetches them (src/model.ts), and `npm run dev` does it for you. Without them
  * the page simply keeps the colour key and says so.
  *
  * The runtime is loaded only when the model is asked for: it is some 15 MB of WebAssembly, and a
@@ -22,7 +22,7 @@ const SIDE = 320;
 const MEAN = [0.485, 0.456, 0.406] as const;
 const DEVIATION = [0.229, 0.224, 0.225] as const;
 
-/** Where `npm run roto:model` puts the weights, as the page asks for them. */
+/** Where `npm run model` puts the weights, as the page asks for them. */
 export const MODEL_URL = 'model/u2netp.onnx';
 
 /**

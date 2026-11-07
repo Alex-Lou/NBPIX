@@ -1,8 +1,8 @@
 /**
- * The pixels the rotoscope tool works on (docs/art/roto.md): RGBA, four bytes a pixel, row by
+ * The pixels the rotoscope tool works on (docs/methode.md): RGBA, four bytes a pixel, row by
  * row — the shape a browser's `ImageData` already holds, so a canvas's pixels pass straight into
  * every step of the chain. No DOM and no engine here: each step is a pure function, so the page
- * is only wiring and the maths is tested without a browser (tests/tools/roto.test.ts).
+ * is only wiring and the maths is tested without a browser (tests/roto.test.ts).
  */
 
 /** An image, as `ImageData` holds one. */

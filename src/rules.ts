@@ -8,7 +8,7 @@
  * hand (loi de Hyrum, CLAUDE.md).
  *
  * Only the geometric rules can apply: the output is truecolour, so everything about palette slots
- * is out of reach (docs/art/roto.md §1). What is left is worth having — the 4 px kept clear along
+ * is out of reach (docs/methode.md §1). What is left is worth having — the 4 px kept clear along
  * the cell's edges is a real rule, stricter than "does the subject fit", and the one a rotoscoped
  * subject breaks most often.
  */

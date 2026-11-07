@@ -2,7 +2,7 @@
  * The rules a drawn image is held to, and the check that applies them — the only place they live.
  *
  * `npm run sprites` refuses a drawing that breaks one of these, and the Aseprite extension warns
- * before it exports; both go through here. The rotoscope page (tools/roto) runs the same check on
+ * before it exports; both go through here. The rotoscope page (src/main.ts) runs the same check on
  * what it produces, so what it tells the artist is what the pipeline will say, not a lookalike
  * that drifts. Hence this module apart: it touches no disk and no engine, so a browser can load it.
  */

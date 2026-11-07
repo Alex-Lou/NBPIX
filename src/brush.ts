@@ -1,5 +1,5 @@
 /**
- * What a stroke lays down (docs/art/roto.md §2). No DOM and no state: the page turns pointer
+ * What a stroke lays down (docs/methode.md §2). No DOM and no state: the page turns pointer
  * events into points, this says which pixels change. The awkward part — a drag that moves faster
  * than the events arrive — is therefore testable without a browser.
  */

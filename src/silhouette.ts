@@ -1,5 +1,5 @@
 /**
- * The subject's silhouette in an imported image (docs/art/roto.md §2): what the tool keeps, and
+ * The subject's silhouette in an imported image (docs/methode.md §2): what the tool keeps, and
  * what is background. Two ways, tried in this order.
  *
  * - **The image already says it.** Enough transparent pixels and the alpha channel is the answer:

@@ -1,5 +1,5 @@
 /**
- * Whether the measurement can be trusted (docs/art/roto.md §2.1).
+ * Whether the measurement can be trusted (docs/methode.md §2.1).
  *
  * The tool measures, it does not understand. A studio portrait with no feet in the frame hands it
  * a perfectly clean silhouette whose lowest pixel is the shadow of a collar — and it will stand
@@ -33,7 +33,7 @@ export type Concern =
   | { readonly kind: 'overflow'; readonly overflow: Overflow };
 
 /**
- * Measured on the two cases at hand (docs/art/roto.md §5): a strip on a wall plants its feet over
+ * Measured on the two cases at hand (docs/methode.md §5): a strip on a wall plants its feet over
  * **94 %** of its width, a portrait's collar over **5 %**. A quarter sits well clear of both, and
  * on the side that lets a fighter stand with its feet together.
  */
