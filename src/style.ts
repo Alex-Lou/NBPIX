@@ -14,6 +14,16 @@
  * | Game Boy | **3** nuances + transparent | 8×8, 8×16 | 4 niveaux, écran 160×144 |
  * | SNES | **15** + transparent | 8, 16, 32, 64 | 32 768 (5 bits par canal) |
  * | Mega Drive | **15** + transparent | 8 à 32, par tuiles | 512 (3 bits par canal) |
+ *
+ * **La colonne « par sprite » est le piège.** Un objet plus grand qu'un sprite est fait de
+ * plusieurs sprites, et chacun choisit librement l'une des palettes matérielles : un objet de
+ * 16 × 16 sur NES, c'est deux sprites de 8 × 16, donc deux palettes, donc six couleurs. Un
+ * personnage en utilise quatre — le maximum simultané de la machine — soit douze. Demander trois
+ * couleurs pour un personnage entier est donc *plus strict que le matériel*, et rend des sprites
+ * qu'aucun jeu NES n'a jamais eus.
+ *
+ * Le Game Boy fait exception et reste à trois : sa DMG n'a que quatre niveaux en tout, et une
+ * seconde palette de sprite y puise les mêmes. Là, la contrainte est vraiment la machine.
  */
 
 import type { Format } from './format.ts';
@@ -159,10 +169,9 @@ export interface Style {
 export const STYLES: readonly Style[] = [
   {
     name: 'NES — objet 16 × 16',
-    about:
-      '3 couleurs parmi les 54 de la machine. Un objet de cette taille y tenait sur quatre sprites.',
+    about: '6 couleurs de la machine : deux sprites de 8 × 16, donc deux de ses quatre palettes.',
     format: boxFormat(16, 0),
-    colors: 3,
+    colors: 6,
     master: NES,
     dither: 1,
   },
@@ -177,10 +186,26 @@ export const STYLES: readonly Style[] = [
   },
   {
     name: 'NES — personnage 16 × 32',
-    about: '3 couleurs, la taille d’un héros de plateforme de 1985.',
+    about: '12 couleurs : les quatre palettes de la machine, ce qu’un héros de 1985 pouvait avoir.',
     format: { ...boxFormat(16, 0), name: 'NES 16 × 32', height: 32, lowestRow: 31, height0: 30 },
-    colors: 3,
+    colors: 12,
     master: NES,
+    dither: 1,
+  },
+  {
+    name: 'NES — personnage 32 × 32',
+    about: 'Les mêmes 12 couleurs, sur quatre fois plus de pixels : un personnage s’y lit.',
+    format: boxFormat(32, 1),
+    colors: 12,
+    master: NES,
+    dither: 1,
+  },
+  {
+    name: 'Game Boy — personnage 32 × 32',
+    about: 'Toujours 3 nuances — c’est la machine — mais assez de pixels pour une silhouette.',
+    format: boxFormat(32, 1),
+    colors: 3,
+    master: GAME_BOY,
     dither: 1,
   },
   {
@@ -195,6 +220,14 @@ export const STYLES: readonly Style[] = [
     name: 'Mega Drive — objet 32 × 32',
     about: '15 couleurs parmi 512. Moins de teintes que la SNES, d’où ses contrastes plus durs.',
     format: boxFormat(32, 1),
+    colors: 15,
+    master: MEGA_DRIVE,
+    dither: 0.6,
+  },
+  {
+    name: 'Mega Drive — personnage 48 × 48',
+    about: '15 couleurs, sur la taille où un personnage de la machine commence à se lire.',
+    format: boxFormat(48, 2),
     colors: 15,
     master: MEGA_DRIVE,
     dither: 0.6,

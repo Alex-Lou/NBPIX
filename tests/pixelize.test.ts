@@ -6,7 +6,7 @@ import { PIXELIZE_DEFAULTS, pixelize } from '../src/pixelize';
 import { placeOnCell, PLACEMENT_DEFAULTS } from '../src/place';
 import { atFinesse, fighterFormat, PORTRAIT } from '../src/format';
 import { pipelineProblems } from '../src/rules';
-import { GAME_BOY, MEGA_DRIVE, NES, STYLES } from '../src/style';
+import { GAME_BOY, MEGA_DRIVE, NES, SNES, STYLES } from '../src/style';
 
 describe('pixelize', () => {
   const made = (over: Partial<typeof PIXELIZE_DEFAULTS> = {}) => {
@@ -54,13 +54,32 @@ describe('pixelize', () => {
 });
 
 describe('styles historiques', () => {
-  it('impose à chaque machine ce qu’elle imposait vraiment', () => {
-    const byName = (name: string) => STYLES.find((style) => style.name.startsWith(name));
-    // 3 couleurs sur NES et Game Boy, 15 sur la génération 16 bits : c'est le matériel.
-    expect(byName('NES')?.colors).toBe(3);
-    expect(byName('Game Boy')?.colors).toBe(3);
-    expect(byName('SNES')?.colors).toBe(15);
-    expect(byName('Mega Drive')?.colors).toBe(15);
+  it('ne demande jamais plus de couleurs que la machine pouvait en montrer', () => {
+    for (const style of STYLES) {
+      if (style.master === GAME_BOY) {
+        // La DMG n'a que quatre niveaux en tout, et la seconde palette de sprite y puise les
+        // mêmes : trois nuances, quelle que soit la taille.
+        expect(style.colors).toBe(3);
+      }
+      if (style.master === NES) {
+        // Quatre palettes simultanées de trois couleurs : douze, jamais plus, quel que soit le
+        // nombre de sprites qui composent l'objet.
+        expect(style.colors).toBeLessThanOrEqual(12);
+        expect(style.colors % 3).toBe(0);
+      }
+      if (style.master === SNES || style.master === MEGA_DRIVE) {
+        expect(style.colors).toBeLessThanOrEqual(15);
+      }
+    }
+  });
+
+  it('donne à un objet le budget des sprites qui le composent', () => {
+    const byName = (name: string) => STYLES.find((style) => style.name === name);
+    // Le piège que ce projet s'était tendu : trois couleurs, c'est la limite d'un sprite 8 × 16,
+    // pas celle d'un objet. Un 16 × 16 en fait deux, un personnage quatre.
+    expect(byName('NES — objet 16 × 16')?.colors).toBe(6);
+    expect(byName('NES — personnage 16 × 32')?.colors).toBe(12);
+    expect(byName('NES — personnage 32 × 32')?.colors).toBe(12);
   });
 
   it('pose chaque couleur sur une que la machine savait afficher', () => {
