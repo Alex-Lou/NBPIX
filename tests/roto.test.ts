@@ -38,6 +38,7 @@ import { GAME_BOY, MEGA_DRIVE, NES, STYLES } from '../src/style';
 import { stamp, stroke } from '../src/brush';
 import { listOf, sentenceOf } from '../src/words';
 import { inputOf, maskOf } from '../src/segment';
+import { CELL_TARGET, fitZoom, maxZoom } from '../src/view';
 
 /** A flat background with shapes painted on it, the way a studio photo looks to the tool. */
 function scene(
@@ -983,5 +984,60 @@ describe('styles historiques', () => {
     // Une couleur de la NES, pas celle qu'on lui a donnée.
     expect([r, g, b]).not.toEqual([123, 45, 67]);
     expect(GAME_BOY.snap(255, 255, 255)).toEqual([155, 188, 15]);
+  });
+});
+
+describe('le zoom de la case', () => {
+  // La place d'une colonne de la page sur un écran courant : assez pour la cible.
+  const ROOM = 770;
+
+  it('rend une petite case à une taille qu’on peut juger', () => {
+    // Le bug : 32 px de case rendus en 32 px d'écran, invisibles.
+    for (const side of [16, 32, 64, 96, 128, 256]) {
+      const shown = side * fitZoom(side, ROOM);
+      expect(shown).toBeGreaterThanOrEqual(400);
+      expect(shown).toBeLessThanOrEqual(CELL_TARGET + side);
+    }
+  });
+
+  it('ne donne qu’un facteur entier', () => {
+    // Un facteur fractionnaire rend certaines rangées plus épaisses : c'est ce qu'on vient voir.
+    for (const side of [16, 32, 48, 96, 150, 256, 512]) {
+      expect(Number.isInteger(fitZoom(side, ROOM))).toBe(true);
+    }
+  });
+
+  it('ne dépasse jamais la place dont il dispose', () => {
+    for (const room of [120, 360, 450, 770, 4000]) {
+      for (const side of [16, 32, 64, 256]) {
+        const shown = side * fitZoom(side, room);
+        // Sauf à ×1, où une case plus large que la place reste dessinée telle quelle.
+        if (fitZoom(side, room) > 1) expect(shown).toBeLessThanOrEqual(room);
+      }
+    }
+  });
+
+  it('reste à ×1 pour une case déjà plus grande que la cible', () => {
+    expect(fitZoom(512, ROOM)).toBe(1);
+    // Une planche HD à finesse ×4 : rien à agrandir.
+    expect(fitZoom(2048, ROOM)).toBe(1);
+  });
+
+  it('refuse une toile que le navigateur ne donnerait pas', () => {
+    // ×32 demandé à la main sur une case de 512 ferait 16 384 px de côté, soit un gigaoctet.
+    for (const side of [16, 32, 256, 512]) {
+      expect(side * maxZoom(side)).toBeLessThanOrEqual(4096);
+    }
+    expect(maxZoom(512)).toBe(8);
+    expect(maxZoom(8192)).toBe(1);
+  });
+
+  it('ne rend jamais un zoom absurde quand la place est illisible', () => {
+    // Figure encore cachée : largeur 0, et un CSS illisible donne NaN. Ni l'un ni l'autre ne doit
+    // sortir un NaN, qui ferait une toile de taille 0 et un carré noir.
+    expect(fitZoom(32, 0)).toBe(1);
+    expect(fitZoom(32, Number.NaN)).toBe(14);
+    expect(fitZoom(0, ROOM)).toBe(1);
+    expect(fitZoom(Number.NaN, ROOM)).toBe(1);
   });
 });

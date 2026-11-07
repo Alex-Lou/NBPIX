@@ -80,6 +80,40 @@ const DASH: readonly number[] = [3, 5];
 const FAINT = 'rgba(255, 176, 32, 0.45)';
 const MARK = '#ffb020';
 
+/**
+ * La largeur à laquelle on cherche à montrer une case, en pixels d'écran. Une case de 32 px rendue
+ * en 32 px ne se juge pas : on vient regarder des pixels, il faut les voir.
+ */
+export const CELL_TARGET = 448;
+
+/**
+ * Au plus ce côté en pixels de toile. Le zoom est un facteur absolu, donc rien n'empêche de
+ * demander ×32 sur une case de 512 : ce serait un gigaoctet de toile et un onglet qui tombe.
+ */
+const CELL_MAX_SIDE = 4096;
+
+/**
+ * Le facteur qui amène une case près de `CELL_TARGET`, sans dépasser la place dont on dispose.
+ *
+ * Le facteur est **entier** : au plus proche voisin, un facteur fractionnaire rend certaines
+ * rangées plus épaisses que d'autres, et c'est précisément ce qu'on vient vérifier. Mieux vaut
+ * 352 px nets que 448 px inégaux — d'où le plafond à la place réelle plutôt qu'un rétrécissement
+ * par le CSS.
+ */
+export function fitZoom(cellWidth: number, room: number): number {
+  if (!Number.isFinite(cellWidth) || cellWidth <= 0) return 1;
+  const wanted = Math.round(CELL_TARGET / cellWidth);
+  // Une place illisible (figure encore cachée, CSS pas encore appliqué) ne doit pas donner un zoom
+  // absurde ni un NaN : on retombe sur la cible, que le CSS rétrécira au pire.
+  const allowed = Number.isFinite(room) ? Math.floor(room / cellWidth) : wanted;
+  return Math.max(1, Math.min(wanted, allowed, maxZoom(cellWidth)));
+}
+
+/** Le zoom le plus fort qu'une case de cette taille supporte sans faire tomber le navigateur. */
+export function maxZoom(cellWidth: number): number {
+  return Math.max(1, Math.floor(CELL_MAX_SIDE / Math.max(1, cellWidth)));
+}
+
 /** The cell, on a checkerboard so transparency reads, with the guides its frame is judged by. */
 export function drawCell(
   canvas: HTMLCanvasElement,

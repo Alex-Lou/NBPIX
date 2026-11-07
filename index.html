@@ -121,6 +121,21 @@
         font-size: 11px;
         letter-spacing: 0.06em;
       }
+      /* Le dépliant des réglages fins : il doit se lire comme un titre de groupe, et se voir
+         comme quelque chose qui s'ouvre. */
+      summary {
+        cursor: pointer;
+        color: var(--dim);
+        text-transform: uppercase;
+        font-size: 11px;
+        letter-spacing: 0.06em;
+        padding: 10px 0 0;
+        border-top: 1px solid var(--line);
+        margin-top: 10px;
+      }
+      details[open] summary {
+        color: var(--ink);
+      }
       label {
         display: grid;
         grid-template-columns: 1fr auto;

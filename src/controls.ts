@@ -19,6 +19,8 @@ export interface Controls {
   /** Reads every control's value back from the state. */
   readonly refresh: () => void;
   readonly group: (title: string, children: readonly HTMLElement[]) => HTMLElement;
+  /** Un dépliant, fermé : ce qui sert à affiner, et qui n'a pas à être lu pour démarrer. */
+  readonly fold: (title: string, children: readonly HTMLElement[]) => HTMLElement;
   readonly range: (
     label: string,
     get: () => number,
@@ -71,6 +73,16 @@ export function controlsOn(onChange: () => void): Controls {
       legend.textContent = title;
       set.append(legend, ...children);
       return set;
+    },
+
+    // `details` plutôt qu'un pliage à la main : fermé par défaut, ouvrable au clavier, et le
+    // navigateur garde l'état ouvert/fermé tout seul. Rien à écrire pour ça.
+    fold: (title, children) => {
+      const box = document.createElement('details');
+      const head = document.createElement('summary');
+      head.textContent = title;
+      box.append(head, ...children);
+      return box;
     },
 
     range: (label, get, set, bounds, show = String) => {
