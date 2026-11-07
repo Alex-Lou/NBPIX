@@ -101,6 +101,12 @@
         padding: 12px;
         position: sticky;
         top: 16px;
+        /* Les réglages fins dépliés dépassent la hauteur de l'écran. Sans cette borne, c'est toute
+           la page qui défile pour atteindre le dernier curseur, et la case sort du champ au moment
+           même où l'on règle ce qu'elle montre. */
+        max-height: calc(100vh - 32px);
+        overflow-y: auto;
+        overscroll-behavior: contain;
       }
       #about {
         margin: 0 0 10px;
