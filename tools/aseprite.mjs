@@ -1,8 +1,13 @@
 /**
  * Transforme un PNG rendu par NBPIX en .aseprite, en passant par ton Aseprite.
  *
+ *   npm run aseprite                      le nbpix-*.png le plus récent, converti puis ouvert
  *   npm run aseprite -- mon-sprite.png
  *   npm run aseprite -- mon-sprite.png --out ailleurs.aseprite
+ *
+ * Sans argument, il prend le `nbpix-*.png` le plus récent du dossier courant ou des
+ * téléchargements : c'est exactement ce que la page vient d'enregistrer, et taper un chemin pour
+ * le redire est une étape de trop.
  *
  * Aseprite tourne sans interface (`--batch`) et exécute tools/aseprite.lua. Le binaire est
  * cherché dans le PATH, puis aux endroits où les installeurs le posent ; `--aseprite <chemin>`
@@ -12,8 +17,9 @@
  * avoir besoin de lancer avec un Node plus ancien que celui du reste du projet.
  */
 
-import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { existsSync, readdirSync, statSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -42,21 +48,61 @@ function asepriteAt(given) {
   return USUAL.find((path) => path && existsSync(path));
 }
 
+/** Là où un PNG sorti de la page a des chances d'être : à côté de soi, ou dans les téléchargements. */
+const LOOK_IN = [
+  process.cwd(),
+  join(homedir(), 'Downloads'),
+  // Le vrai dossier s'appelle « Downloads » même en français sous Windows ; ailleurs, non.
+  join(homedir(), 'Téléchargements'),
+];
+
+/**
+ * Le `nbpix-*.png` le plus récent. La page nomme ses sorties ainsi (`nbpix-32x32.png`), et le
+ * navigateur ajoute « (1) » quand il en enregistre un deuxième — d'où un motif et non un nom exact.
+ */
+function latestSprite() {
+  let best;
+  for (const folder of LOOK_IN) {
+    let names;
+    try {
+      names = readdirSync(folder);
+    } catch {
+      continue; // Un dossier absent n'est pas une erreur : on en propose plusieurs exprès.
+    }
+    for (const name of names) {
+      if (!/^nbpix-.*\.png$/i.test(name)) continue;
+      const path = join(folder, name);
+      try {
+        const when = statSync(path).mtimeMs;
+        if (!best || when > best.when) best = { path, when };
+      } catch {
+        continue;
+      }
+    }
+  }
+  return best?.path;
+}
+
 const args = process.argv.slice(2);
 const flag = (name) => {
   const at = args.indexOf(`--${name}`);
   return at === -1 ? undefined : args[at + 1];
 };
-const sprite = args.find(
-  (arg) => !arg.startsWith('--') && args[args.indexOf(arg) - 1]?.startsWith('--') !== true,
+// L'index vient de `find` : `indexOf` rendrait la première occurrence, donc deux arguments
+// identiques feraient lire le mauvais voisin.
+const given = args.find(
+  (arg, at) => !arg.startsWith('--') && args[at - 1]?.startsWith('--') !== true,
 );
+const sprite = given ?? latestSprite();
 
 if (!sprite) {
   console.error(
-    'Usage : npm run aseprite -- <sprite.png> [--out <fichier.aseprite>] [--aseprite <chemin>]',
+    `Aucun nbpix-*.png trouvé dans :\n${LOOK_IN.map((folder) => `  ${folder}`).join('\n')}\n` +
+      'Enregistre une case depuis la page, ou donne le fichier : npm run aseprite -- mon-sprite.png',
   );
   process.exit(1);
 }
+if (!given) console.log(`le plus récent : ${sprite}`);
 if (!existsSync(sprite)) {
   console.error(`${sprite} est introuvable.`);
   process.exit(1);
@@ -85,4 +131,9 @@ const run = spawnSync(
   ],
   { stdio: 'inherit' },
 );
-process.exit(run.status ?? 1);
+if (run.status !== 0) process.exit(run.status ?? 1);
+
+// Ouvrir le résultat : c'est là que le travail à la main commence, autant ne pas avoir à le
+// chercher. Détaché, pour que la commande rende la main sans attendre qu'on ferme la fenêtre.
+spawn(binary, [out], { detached: true, stdio: 'ignore' }).unref();
+console.log(`ouvert dans Aseprite : ${out}`);
