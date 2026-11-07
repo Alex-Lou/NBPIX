@@ -10,7 +10,6 @@
 
 import type { Format } from './format.ts';
 import { atFinesse, fittingHeight } from './format.ts';
-import type { Style } from './style.ts';
 import { STYLES } from './style.ts';
 import { toLab } from './game/lab.ts';
 import type { Sheet } from './brush.ts';
@@ -22,77 +21,16 @@ import { labBufferOf } from './pixels.ts';
 import type { Placed } from './place.ts';
 import { PLACEMENT_DEFAULTS, placeOnCell } from './place.ts';
 import type { Pixelized } from './pixelize.ts';
-import { PIXELIZE_DEFAULTS, pixelize } from './pixelize.ts';
+import { pixelize } from './pixelize.ts';
 import { pipelineProblems } from './rules.ts';
 import { modelIsThere, segment } from './segment.ts';
-import type { Corners, Mask, Paint } from './silhouette.ts';
+import type { Mask } from './silhouette.ts';
 import { painted, refine, SILHOUETTE_DEFAULTS, silhouetteOf, soleOf } from './silhouette.ts';
-import { canvasOf, drawCell, drawSource, fitZoom, maxZoom } from './view.ts';
+import { canvasOf, drawCell, drawSource, fitZoom } from './view.ts';
 import { sentenceOf } from './words.ts';
-
-/**
- * The longest side the page works at. A 4 000 px photo holds nothing a 512 px cell can show, and
- * every slider move would wait on it; 1 600 keeps the chain interactive and loses nothing.
- */
-const WORK_MAX = 1600;
-
-const state = {
-  tolerance: SILHOUETTE_DEFAULTS.tolerance,
-  minShare: SILHOUETTE_DEFAULTS.minShare,
-  tidy: SILHOUETTE_DEFAULTS.tidy,
-  corners: { ...SILHOUETTE_DEFAULTS.corners },
-  /** Where the automatic mask comes from: the colour key, or the model (segment.ts). */
-  source: 'key' as 'key' | 'model',
-  /** How much of the model's confidence a pixel needs to count as subject. */
-  floor: 0.5,
-  /** What the brush lays down: 1 paints subject, -1 paints background. */
-  brush: 1 as 1 | -1,
-  radius: 24,
-  /** Le style visé : une boîte, un nombre de couleurs, la palette d'une machine (style.ts). */
-  style: STYLES[0] as Style,
-  /** The box and the rule for putting the subject in it, before `finesse` (format.ts). */
-  format: STYLES[0]?.format ?? PLACEMENT_DEFAULTS.format,
-  /** The subject's height in the format's own pixels, before `finesse`. */
-  height: STYLES[0]?.format.height0 ?? PLACEMENT_DEFAULTS.height,
-  /**
-   * How many pixels the square really holds, as a multiple of the frame's own size. The grain of
-   * the result is nothing but this: at ×4 the same framing is drawn four times as finely, at ×½
-   * twice as coarsely. Only ×1 is the size the game loads.
-   */
-  finesse: 1,
-  flip: PLACEMENT_DEFAULTS.flip,
-  nudgeX: PLACEMENT_DEFAULTS.nudgeX,
-  nudgeY: PLACEMENT_DEFAULTS.nudgeY,
-  edge: PLACEMENT_DEFAULTS.edge,
-  method: PIXELIZE_DEFAULTS.method,
-  kuwahara: PIXELIZE_DEFAULTS.kuwahara,
-  sharpen: PIXELIZE_DEFAULTS.sharpen,
-  saturation: PIXELIZE_DEFAULTS.saturation,
-  outline: PIXELIZE_DEFAULTS.outline,
-  colors: STYLES[0]?.colors ?? PIXELIZE_DEFAULTS.colors,
-  dither: STYLES[0]?.dither ?? PIXELIZE_DEFAULTS.dither,
-  orphans: PIXELIZE_DEFAULTS.orphans,
-  zoom: 1,
-  guides: true,
-};
-
-/** Everything one imported image brings, and everything derived from it. */
-interface Work {
-  readonly image: Bitmap;
-  readonly lab: Float32Array;
-  /** The hand's word on each pixel, kept across every other change. */
-  readonly paint: Paint;
-  /** Room for the painted mask, so a stroke allocates nothing. */
-  readonly canvas: Uint8Array;
-  /** Room for the model's mask, kept apart because `refine` writes over what it is given. */
-  readonly cleaned: Uint8Array;
-  /**
-   * Un échantillon des couleurs du sujet, prises sur la source avant toute réduction : c'est là
-   * qu'on apprend la palette, pour qu'elle représente ce qu'on a donné à l'outil et non ce qui
-   * reste après coup.
-   */
-  sample?: Uint8ClampedArray;
-}
+import { panelOn } from './panel.ts';
+import type { Work } from './page-state.ts';
+import { state, WORK_MAX } from './page-state.ts';
 
 let work: Work | undefined;
 /**
@@ -109,11 +47,6 @@ let made: Pixelized | undefined;
 let shownFormat: Format = PLACEMENT_DEFAULTS.format;
 /** The mask of the last pass, so « remplir » knows how big the subject is. */
 let mask: Mask | undefined;
-/**
- * La largeur de case pour laquelle le zoom courant a été choisi. Tant qu'elle ne change pas, le
- * curseur garde la main — sans cette mémoire, chaque passe écraserait le zoom demandé à la main.
- */
-let zoomedFor: number | undefined;
 
 // The page -------------------------------------------------------------------------------------
 
@@ -158,7 +91,7 @@ let resizing = 0;
 window.addEventListener('resize', () => {
   window.clearTimeout(resizing);
   resizing = window.setTimeout(() => {
-    zoomedFor = undefined;
+    state.zoomedFor = undefined;
     schedule();
   }, 200);
 });
@@ -175,13 +108,6 @@ function schedule(): void {
 }
 
 const ui = controlsOn(schedule);
-
-const CORNERS: readonly { key: keyof Corners; mark: string; title: string }[] = [
-  { key: 'topLeft', mark: '↖', title: 'Partir du coin haut gauche' },
-  { key: 'topRight', mark: '↗', title: 'Partir du coin haut droit' },
-  { key: 'bottomLeft', mark: '↙', title: 'Partir du coin bas gauche' },
-  { key: 'bottomRight', mark: '↘', title: 'Partir du coin bas droit' },
-];
 
 const clear = ui.button('Effacer les retouches', () => {
   work?.paint.fill(0);
@@ -250,216 +176,7 @@ function fill(): void {
 
 about.textContent = state.style.about;
 must('controls').append(
-  // Le seul choix nécessaire pour obtenir quelque chose, et le bouton qui sort le résultat. Tout le
-  // reste sert à affiner : replié, pour que la page s'ouvre sur une décision et non sur vingt.
-  ui.choice(
-    'Style',
-    () => STYLES.indexOf(state.style),
-    chooseStyle,
-    STYLES.map((style, index) => ({ value: index, label: style.name })),
-  ),
-  // La ligne qui dit ce que ce style impose commente le choix : elle le suit, elle ne le précède pas.
-  about,
-  save,
-  ui.fold('Réglages fins', [
-    ui.group('Silhouette', [
-      ui.range(
-        'Tolérance du fond',
-        () => state.tolerance,
-        (v) => (state.tolerance = v),
-        {
-          min: 0,
-          max: 60,
-          step: 1,
-        },
-      ),
-      ui.range(
-        'Poussières ignorées',
-        () => state.minShare,
-        (v) => (state.minShare = v),
-        { min: 0, max: 0.2, step: 0.005 },
-        (value) => `${Math.round(value * 100)} %`,
-      ),
-      ui.range(
-        'Nettoyage du bord',
-        () => state.tidy,
-        (v) => (state.tidy = v),
-        { min: 0, max: 3, step: 1 },
-        (value) => (value === 0 ? 'aucun' : `${value} passe(s)`),
-      ),
-      ui.choice('Détourage', () => (state.source === 'model' ? 1 : 0), chooseSource, [
-        { value: 0, label: 'par la couleur' },
-        { value: 1, label: 'par le modèle' },
-      ]),
-      ui.range(
-        'Seuil du modèle',
-        () => state.floor,
-        (v) => (state.floor = v),
-        { min: 0.05, max: 0.95, step: 0.05 },
-        (value) => `${Math.round(value * 100)} %`,
-      ),
-      ui.toggles(
-        'Coins de départ',
-        CORNERS,
-        (key) => state.corners[key],
-        (key, value) => (state.corners = { ...state.corners, [key]: value }),
-      ),
-    ]),
-    ui.group('Pinceau', [
-      ui.choice(
-        'Le trait pose',
-        () => state.brush,
-        (v) => (state.brush = v === 1 ? 1 : -1),
-        [
-          { value: 1, label: 'du sujet' },
-          { value: -1, label: 'du fond' },
-        ],
-      ),
-      ui.range(
-        'Taille',
-        () => state.radius,
-        (v) => (state.radius = v),
-        { min: 4, max: 120, step: 2 },
-        (value) => `${value * 2} px`,
-      ),
-      clear,
-    ]),
-    ui.group('Pose', [
-      ui.range(
-        'Hauteur du sujet',
-        () => state.height,
-        (v) => (state.height = v),
-        { min: 2, max: 512, step: 1 },
-        (value) => `${value} px`,
-      ),
-      fitButton,
-      ui.check(
-        'Retourner (doit regarder à droite)',
-        () => state.flip,
-        (v) => (state.flip = v),
-      ),
-      ui.choice(
-        'Finesse',
-        () => state.finesse * 100,
-        (v) => (state.finesse = v / 100),
-        [
-          { value: 50, label: '×½ (gros grain)' },
-          { value: 100, label: '×1 (taille du jeu)' },
-          { value: 200, label: '×2' },
-          { value: 400, label: '×4 (très fin)' },
-        ],
-      ),
-      ui.range(
-        'Décalage ←→',
-        () => state.nudgeX,
-        (v) => (state.nudgeX = v),
-        {
-          min: -80,
-          max: 80,
-          step: 1,
-        },
-      ),
-      ui.range(
-        'Décalage ↑↓',
-        () => state.nudgeY,
-        (v) => (state.nudgeY = v),
-        {
-          min: -80,
-          max: 80,
-          step: 1,
-        },
-      ),
-    ]),
-    ui.group('Pixels', [
-      ui.range(
-        'Arêtes nettes',
-        () => state.edge,
-        (v) => (state.edge = v),
-        { min: 0, max: 40, step: 1 },
-        (value) => (value === 0 ? 'moyenne' : String(value)),
-      ),
-      ui.choice(
-        'Palette',
-        () => (state.method === 'kmeans' ? 1 : 0),
-        (v) => (state.method = v === 1 ? 'kmeans' : 'median'),
-        [
-          { value: 1, label: 'k-means Lab' },
-          { value: 0, label: 'médiane RVB' },
-        ],
-      ),
-      ui.range(
-        'Kuwahara',
-        () => state.kuwahara,
-        (v) => (state.kuwahara = v),
-        {
-          min: 0,
-          max: 4,
-          step: 1,
-        },
-      ),
-      ui.range(
-        'Netteté',
-        () => state.sharpen,
-        (v) => (state.sharpen = v),
-        {
-          min: 0,
-          max: 2,
-          step: 0.1,
-        },
-      ),
-      ui.range(
-        'Saturation',
-        () => state.saturation,
-        (v) => (state.saturation = v),
-        {
-          min: 1,
-          max: 1.6,
-          step: 0.05,
-        },
-      ),
-      ui.range(
-        'Contour',
-        () => state.outline,
-        (v) => (state.outline = v),
-        { min: 0.3, max: 1, step: 0.05 },
-        (value) => (value >= 1 ? 'aucun' : `${Math.round(value * 100)} %`),
-      ),
-      ui.range(
-        'Couleurs',
-        () => state.colors,
-        (v) => (state.colors = v),
-        { min: 0, max: 64, step: 1 },
-        (value) => (value === 0 ? 'toutes' : String(value)),
-      ),
-      ui.range(
-        'Orphelins',
-        () => state.orphans,
-        (v) => (state.orphans = v),
-        {
-          min: 0,
-          max: 4,
-          step: 1,
-        },
-      ),
-    ]),
-    ui.group('Affichage', [
-      ui.range(
-        'Zoom',
-        () => state.zoom,
-        // Le zoom automatique vaut ×28 sur une case de 16 px : le curseur doit pouvoir aller bien
-        // au-delà de ×4 pour servir à quelque chose, et s'arrêter avant la toile que le navigateur
-        // refuserait d'allouer.
-        (v) => (state.zoom = Math.min(v, maxZoom(zoomedFor ?? 1))),
-        { min: 1, max: 32, step: 1 },
-        (value) => `×${value}`,
-      ),
-      ui.check(
-        'Repères',
-        () => state.guides,
-        (v) => (state.guides = v),
-      ),
-    ]),
-  ]),
+  ...panelOn(ui, { about, clear, fit: fitButton, save, chooseStyle, chooseSource }),
 );
 
 // The chain --------------------------------------------------------------------------------------
@@ -536,8 +253,8 @@ function run(): void {
   cellView.hidden = false;
   // Le zoom suit la taille de la case — ×28 pour 16 px, ×1 pour 512 — et n'est recalculé que quand
   // cette taille change, pour laisser la main au curseur entre deux changements de style.
-  if (zoomedFor !== made.cell.width) {
-    zoomedFor = made.cell.width;
+  if (state.zoomedFor !== made.cell.width) {
+    state.zoomedFor = made.cell.width;
     state.zoom = fitZoom(made.cell.width, roomForCell());
   }
   ui.refresh();
