@@ -27,6 +27,7 @@
 import type { Rgba } from './game/png.ts';
 import { quantizeRgba } from './game/quantize.ts';
 import { fromLab, toLab } from './game/lab.ts';
+import type { Master } from './style.ts';
 import type { Bitmap } from './pixels.ts';
 import { byteOf, copyOf, linearOf } from './pixels.ts';
 
@@ -51,6 +52,14 @@ export interface PixelizeOptions {
   readonly colors: number;
   /** How those colours are chosen. */
   readonly method: PaletteMethod;
+  /**
+   * La palette de la machine visée, s'il y en a une (style.ts). Les couleurs sont choisies
+   * librement d'abord — c'est là que le regroupement a du sens — puis **chacune est posée sur la
+   * plus proche que la machine savait afficher**. Choisir directement parmi les couleurs d'une
+   * console donnerait des regroupements absurdes : la NES n'a pas de bruns, elle a des oranges
+   * sombres.
+   */
+  readonly master?: Master;
   /** Passes that give a pixel alone of its colour the colour of its neighbours. */
   readonly orphans: number;
 }
@@ -93,10 +102,12 @@ export function pixelize(placed: Bitmap, on: Uint8Array, options: PixelizeOption
   const edge = edgesOf(cell, on);
   if (options.outline < 1) outline(cell, edge, options.outline);
   if (options.colors <= 0) return { cell, palette: [], colors: countColors(cell, on) };
-  const { palette, slots } =
+  const chosen =
     options.method === 'kmeans'
       ? kmeansLab(cell, on, options.colors)
       : quantizeRgba(cell.data, options.colors);
+  const palette = options.master ? onMaster(chosen.palette, options.master) : chosen.palette;
+  const { slots } = chosen;
   for (let pass = 0; pass < options.orphans; pass++)
     dropOrphans(cell.width, cell.height, slots, on, edge);
   paint(cell, on, slots, palette);
@@ -388,6 +399,16 @@ function kmeansLab(
   }
   for (const [index, pixel] of points.entries()) slots[pixel] = (owner[index] ?? 0) + 1;
   return { palette, slots };
+}
+
+/** Chaque couleur choisie, posée sur la plus proche que la machine savait afficher. */
+function onMaster(palette: readonly Rgba[], master: Master): Rgba[] {
+  return palette.map((color, slot) => {
+    // Le slot 0 est la transparence : il n'a aucune couleur à poser.
+    if (slot === 0) return color;
+    const [r, g, b] = master.snap(color.r, color.g, color.b);
+    return { r, g, b, a: color.a };
+  });
 }
 
 function countColors(cell: Bitmap, on: Uint8Array): number {

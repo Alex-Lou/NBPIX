@@ -34,6 +34,7 @@ import {
 import type { Concern } from '../src/concerns';
 import { anchorIsAGuess, concernsOf } from '../src/concerns';
 import { pipelineProblems, rulesOf } from '../src/rules';
+import { GAME_BOY, MEGA_DRIVE, NES, STYLES } from '../src/style';
 import { stamp, stroke } from '../src/brush';
 import { listOf, sentenceOf } from '../src/words';
 import { inputOf, maskOf } from '../src/segment';
@@ -896,5 +897,91 @@ describe('formats', () => {
     const tiny = boxFormat(16);
     expect(tiny.pin.kind).toBe('box');
     expect(rulesOf(tiny)).toMatchObject({ width: 16, height: 16, frames: 1, margin: tiny.margin });
+  });
+});
+
+/**
+ * Le cas que la règle évidente perdait. Une épée réduite assez fort n'a plus de lame assez épaisse
+ * pour couvrir la moitié d'un pixel : à 16 × 16 elle disparaissait entièrement — pas « moins de
+ * détail », **plus d'objet du tout**.
+ */
+describe('les formes fines survivent', () => {
+  /** Une lame verticale fine sur un fond uni, et rien d'autre. */
+  function blade(thickness: number): Bitmap {
+    return scene(200, 400, WALL, (set) => {
+      const middle = 100;
+      for (let y = 40; y <= 360; y++) {
+        for (let x = middle - thickness / 2; x < middle + thickness / 2; x++) {
+          set(Math.round(x), y, SUBJECT);
+        }
+      }
+    });
+  }
+
+  const drawnOn = (image: Bitmap, side: number) => {
+    const mask = found(image);
+    const format = boxFormat(side, 0);
+    const placed = placeOnCell(image, mask, {
+      ...PLACEMENT_DEFAULTS,
+      format,
+      height: fittingHeight(format, {
+        width: mask.box.right - mask.box.left + 1,
+        height: mask.box.bottom - mask.box.top + 1,
+      }),
+    });
+    return placed.on.reduce((total: number, value) => total + value, 0);
+  };
+
+  it('garde une lame que la moitié d’un pixel ne couvrirait pas', () => {
+    // 10 px de large sur 320 de haut : réduite à 16, la lame fait un demi-pixel.
+    expect(drawnOn(blade(10), 16)).toBeGreaterThan(8);
+  });
+
+  it('la garde à toutes les tailles, de plus en plus finement', () => {
+    const image = blade(10);
+    const small = drawnOn(image, 16);
+    const large = drawnOn(image, 64);
+    expect(small).toBeGreaterThan(0);
+    expect(large).toBeGreaterThan(small);
+  });
+
+  it('ne grossit pas une forme déjà épaisse', () => {
+    // Un bloc large couvre pleinement ses pixels : la règle des crêtes ne doit rien y ajouter.
+    const fat = scene(200, 200, WALL, (set) => {
+      for (let y = 50; y <= 149; y++) for (let x = 50; x <= 149; x++) set(x, y, SUBJECT);
+    });
+    const format = boxFormat(32, 0);
+    const mask = found(fat);
+    const placed = placeOnCell(fat, mask, { ...PLACEMENT_DEFAULTS, format, height: 32 });
+    const box = drawnBox(placed.cell);
+    expect(box.right - box.left + 1).toBeLessThanOrEqual(33);
+    expect(box.bottom - box.top + 1).toBeLessThanOrEqual(33);
+  });
+});
+
+describe('styles historiques', () => {
+  it('impose à chaque machine ce qu’elle imposait vraiment', () => {
+    const byName = (name: string) => STYLES.find((style) => style.name.startsWith(name));
+    // 3 couleurs sur NES et Game Boy, 15 sur la génération 16 bits : c'est le matériel.
+    expect(byName('NES')?.colors).toBe(3);
+    expect(byName('Game Boy')?.colors).toBe(3);
+    expect(byName('SNES')?.colors).toBe(15);
+    expect(byName('Mega Drive')?.colors).toBe(15);
+  });
+
+  it('pose chaque couleur sur une que la machine savait afficher', () => {
+    // La Mega Drive code 3 bits par canal : toute valeur doit tomber sur un de ses 8 niveaux.
+    const levels = Array.from({ length: 8 }, (_, step) => Math.round((step / 7) * 255));
+    for (const value of [0, 17, 130, 200, 255]) {
+      const [r, g, b] = MEGA_DRIVE.snap(value, value, value);
+      for (const channel of [r, g, b]) expect(levels).toContain(channel);
+    }
+  });
+
+  it('ne rend que des couleurs de la table d’une machine qui en a une', () => {
+    const [r, g, b] = NES.snap(123, 45, 67);
+    // Une couleur de la NES, pas celle qu'on lui a donnée.
+    expect([r, g, b]).not.toEqual([123, 45, 67]);
+    expect(GAME_BOY.snap(255, 255, 255)).toEqual([155, 188, 15]);
   });
 });
