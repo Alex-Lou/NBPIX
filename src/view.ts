@@ -15,17 +15,26 @@ export function contextOf(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
   return context;
 }
 
-/** A bitmap on a canvas of its own size: what both the zoomed view and the export need. */
-export function canvasOf(bitmap: Bitmap): HTMLCanvasElement {
-  const canvas = document.createElement('canvas');
-  canvas.width = bitmap.width;
-  canvas.height = bitmap.height;
+function paint(canvas: HTMLCanvasElement, image: Bitmap): HTMLCanvasElement {
+  canvas.width = image.width;
+  canvas.height = image.height;
   const context = contextOf(canvas);
-  const image = context.createImageData(bitmap.width, bitmap.height);
-  image.data.set(bitmap.data);
-  context.putImageData(image, 0, 0);
+  const shown = context.createImageData(image.width, image.height);
+  shown.data.set(image.data);
+  context.putImageData(shown, 0, 0);
   return canvas;
 }
+
+/** A bitmap on a canvas of its own size: what the export needs, and what `toBlob` will read. */
+export function canvasOf(image: Bitmap): HTMLCanvasElement {
+  return paint(document.createElement('canvas'), image);
+}
+
+/**
+ * La toile de travail du rendu. `drawCell` est appelé à chaque mouvement de curseur : en créer une
+ * par redessin laisse une toile par image au ramasse-miettes, pour rien.
+ */
+let scratch: HTMLCanvasElement | undefined;
 
 /** The imported image with the background pushed back, so the silhouette is plain to see. */
 export function drawSource(
@@ -132,7 +141,8 @@ export function drawCell(
     }
   }
   context.imageSmoothingEnabled = false;
-  context.drawImage(canvasOf(cell), 0, 0, canvas.width, canvas.height);
+  scratch ??= document.createElement('canvas');
+  context.drawImage(paint(scratch, cell), 0, 0, canvas.width, canvas.height);
   if (!shown.guides) return;
   context.lineWidth = 1;
   const { pin } = shown.format;
