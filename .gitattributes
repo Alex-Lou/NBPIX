@@ -1,0 +1,7 @@
+# Les fichiers texte sont en LF dans le dépôt et dans l'arbre de travail.
+#
+# Sans cette ligne, un clone Windows (`core.autocrlf=true`, le défaut de Git for Windows) les pose
+# en CRLF, et Prettier — qui attend LF — refuse alors les 32 fichiers du dépôt sans que rien n'ait
+# changé. La CI tourne sous Linux, donc le symptôme ne s'y voit jamais : il n'apparaît que sur la
+# machine où l'on travaille, au pire moment.
+* text=auto eol=lf
