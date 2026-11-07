@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Roto — sous-couche de sprite</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #16161f;
+        --panel: #1f1f2b;
+        --line: #32323f;
+        --ink: #e6e6ef;
+        --dim: #9a9aae;
+        --warn: #ffb020;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font:
+          13px/1.5 system-ui,
+          sans-serif;
+      }
+      header {
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: baseline;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+      h1 {
+        font-size: 15px;
+        margin: 0;
+        font-weight: 600;
+      }
+      header p {
+        margin: 0;
+        color: var(--dim);
+      }
+      main {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 280px;
+        gap: 16px;
+        padding: 16px;
+        align-items: start;
+      }
+      #views {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 16px;
+        min-width: 0;
+      }
+      figure {
+        margin: 0;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 8px;
+        min-width: 0;
+      }
+      figcaption {
+        color: var(--dim);
+        margin-bottom: 6px;
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      #source {
+        cursor: crosshair;
+        touch-action: none;
+      }
+      canvas {
+        display: block;
+        max-width: 100%;
+        height: auto;
+        image-rendering: pixelated;
+        background: #0e0e14;
+        border-radius: 3px;
+      }
+      #drop {
+        border: 1px dashed var(--line);
+        border-radius: 6px;
+        padding: 24px;
+        text-align: center;
+        color: var(--dim);
+        cursor: pointer;
+      }
+      #drop.over {
+        border-color: var(--ink);
+        color: var(--ink);
+      }
+      aside {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 12px;
+        position: sticky;
+        top: 16px;
+      }
+      fieldset {
+        border: 0;
+        border-top: 1px solid var(--line);
+        margin: 0 0 10px;
+        padding: 10px 0 0;
+      }
+      legend {
+        color: var(--dim);
+        padding: 0 6px 0 0;
+        text-transform: uppercase;
+        font-size: 11px;
+        letter-spacing: 0.06em;
+      }
+      label {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 6px;
+      }
+      label span.value {
+        color: var(--dim);
+        font-variant-numeric: tabular-nums;
+      }
+      input[type='range'] {
+        grid-column: 1 / -1;
+        width: 100%;
+        margin: 0;
+      }
+      .toggle-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 2px;
+      }
+      .toggle {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        margin: 0;
+        color: var(--dim);
+      }
+      button {
+        width: 100%;
+        padding: 8px;
+        background: var(--line);
+        color: var(--ink);
+        border: 0;
+        border-radius: 4px;
+        cursor: pointer;
+        font: inherit;
+      }
+      button:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      footer {
+        padding: 10px 16px;
+        border-top: 1px solid var(--line);
+        color: var(--dim);
+        white-space: pre-wrap;
+      }
+      .warn {
+        color: var(--warn);
+      }
+      .fine {
+        color: #3bd16f;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Roto — sous-couche de sprite</h1>
+      <p>
+        Une image, une silhouette, une case au format du jeu. À dessiner par-dessus dans Aseprite.
+      </p>
+    </header>
+    <main>
+      <div id="views">
+        <div id="drop">
+          Dépose une image ici (PNG, JPEG, WebP), colle-la (Ctrl+V), ou clique pour choisir un
+          fichier.
+          <input id="file" type="file" accept="image/*" hidden />
+        </div>
+        <figure hidden id="source-view">
+          <figcaption><span>Source et silhouette</span><span id="source-info"></span></figcaption>
+          <canvas id="source"></canvas>
+        </figure>
+        <figure hidden id="cell-view">
+          <figcaption><span id="cell-label">Case</span><span id="cell-info"></span></figcaption>
+          <canvas id="cell"></canvas>
+        </figure>
+      </div>
+      <aside id="controls"></aside>
+    </main>
+    <footer id="status">Aucune image.</footer>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

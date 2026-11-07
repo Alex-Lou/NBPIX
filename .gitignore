@@ -1,0 +1,8 @@
+dist/
+coverage/
+node_modules/
+*.log
+.DS_Store
+
+# Poids du modèle et moteur WebAssembly, posés par `npm run model`.
+model/

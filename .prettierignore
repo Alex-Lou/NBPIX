@@ -1,0 +1,4 @@
+model/
+tests/fixtures/
+dist/
+package-lock.json
